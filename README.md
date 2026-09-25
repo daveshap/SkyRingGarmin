@@ -4,7 +4,9 @@ A personal **Forerunner 965** watch face: a sky ring around a compact dashboard 
 
 The current design keeps native, readable text; large icons beside numbers; fixed colors for recognition; bright small labels; and a black sleeping display. Data comes from Garmin's APIs and local astronomy calculations. There is no external account, API key, companion service, or always-on renderer.
 
-<!-- Add the current user-supplied watch photo here. Earlier development screenshots show removed features. -->
+<p align="center">
+  <img src="SkyRing%20Final.png" alt="SkyRing watch face for the Garmin Forerunner 965" width="454">
+</p>
 
 ## What is on the face
 
