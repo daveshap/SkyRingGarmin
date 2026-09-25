@@ -2,7 +2,7 @@
 
 SkyRing targets **Forerunner 965 (`fr965`)** only. Open the repository root containing `manifest.xml` and `monkey.jungle`; do not create a new Monkey C project around these files. The manifest requires Connect IQ API 4.2.0. That is the watch's minimum API level, not a requirement to install an old 4.2 SDK.
 
-The current source has been checked with Connect IQ SDK **9.2.0**. Generic compilation and host-side calculation checks were available during development; the FR965 profile and its simulator were not available in that environment. A successful generic compile does not establish device compatibility, runtime memory use, or watchdog timing. Run the device-specific steps below before relying on a new build.
+The current source has been checked with Connect IQ SDK **9.2.0**. Generic compilation and host-side calculation checks were available during development; the FR965 profile and its simulator were not available in that environment. The owner subsequently built and installed this revision on a physical FR965 and confirmed it works, including stress history. A successful generic compile alone does not establish device compatibility, runtime memory use, or watchdog timing. Use the device-specific steps below for your own build.
 
 ## 1. Install the tools
 
@@ -28,7 +28,7 @@ Keep a private backup. Garmin uses this RSA signing key to identify builds; the 
 4. Use **Run → Run Without Debugging** (**Ctrl+F5**) and select **Forerunner 965**. Use **F5** when you want debugging.
 5. Exercise both awake and sleeping states. The face intentionally goes black in low power and must redraw when awake. Check several wake/sleep cycles, including navigating away from the face and back.
 
-Simulator values can be missing or synthetic. Supply location and weather simulation data when checking the ring or weather fields; a face with no usable location deliberately suppresses location-dependent sky markers. Do not treat an empty simulated recovery or weather reading as proof that the field fails on the watch. See [validation and remaining checks](VALIDATION.md).
+Simulator values can be missing or synthetic. Supply location and weather simulation data when checking the ring or weather fields; a face with no usable location deliberately suppresses location-dependent sky markers. Do not treat an empty simulated recovery, weather, or stress-history reading as proof that the field fails on the watch. The owner saw a blank stress chart while current stress was present in the SDK 9.2.0 simulator, then confirmed history worked on the physical watch. The current build deliberately contains no simulator-specific history workaround. See [validation and remaining checks](VALIDATION.md).
 
 ## 4. Build the file for the watch
 
@@ -71,9 +71,17 @@ node .\tools\check_rim_positions.js
 
 This checks the current position calculations and rim mapping against reference cases. It is a host-side check, not execution inside Garmin's Monkey C VM, and does not measure watch CPU or battery use.
 
+### Source-derived history and refresh checks
+
+```powershell
+node .\tools\check_candidate.js
+```
+
+Despite its original filename, this checks the current source: history buckets and sample filtering, chart drawing, shared cache timing, colors, daily goals, recovery confirmation, footer removal, and awake-only guards. These are host checks, not Garmin VM execution or battery measurements.
+
 ### Native Monkey C unit tests
 
-`monkey-tests.jungle` adds `tests` to the source path. `monkey.jungle` is the normal app build. Tests cover rolling daily steps, wake-state decisions, recovery formatting, and lunar position/horizon cases.
+`monkey-tests.jungle` adds `tests` to the source path. `monkey.jungle` is the normal app build. The 29 test functions cover rolling daily steps and goals, history buckets, chart colors, wake-state decisions, recovery formatting/confirmation, and lunar position/horizon cases. Development checks compiled these tests; they were not executed in the unavailable local FR965 simulator.
 
 For the VS Code route, set **Monkey C: Jungle Files** to `monkey-tests.jungle` locally, then run **Monkey C: Run Tests** or use the extension's Test Explorer with the FR965 selected. Restore `monkey.jungle` before building the installable release.
 
@@ -105,6 +113,7 @@ Only if changing the icon atlas, install Python with Pillow and Inkscape and run
 | Monkey C commands do not appear | Confirm Garmin's extension is installed and enabled, the project folder is trusted, and a `.mc` source file is open. |
 | Launcher icon size warning | An older RowWatch build warned that a 40×40 icon would be scaled to 65×65. That warning was nonfatal; it did not prevent installation. The current SkyRing launcher icon is already 65×65. If the old warning returns, check that you opened the current project. |
 | Old lunar placeholders, obsolete workers, or strange text survive an upgrade | Extract/clone into a clean folder, run **Monkey C: Clean Project**, and rebuild. The current source has no moonrise/set or full/new-moon event workers and no custom bitmap text font. |
+| Current stress shows but simulated history is blank | Current stress and history use separate sources. See the recorded [simulator finding](VALIDATION.md#simulator-stress-history-observation); this release worked on the owner's watch. After changing simulated history, restart the face or allow its five-minute history cache to expire. Do not fill missing history with invented samples. |
 | `IQ!`, a watchdog error, or failure to wake | Switch to a working face, record the error and stack trace, and include the source revision, SDK version, target, and whether it occurred in the simulator or on hardware. Do not assume successful compilation rules out runtime bugs. |
 | Watch does not appear in Explorer | Try a known data-capable cable and another USB port; confirm the watch has entered its USB connection mode. |
 

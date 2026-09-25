@@ -1,6 +1,6 @@
 # Findings, removed experiments, and known limits
 
-This records what we learned while moving from RowWatch to SkyRing and repairing the sky calculations. It distinguishes reported device behavior, source changes, and checks that have not yet been run on the target watch. The current publication is the **simplified SkyRing** build: current Sun/Moon positions and Moon phase remain; lunar event predictions do not.
+This records what we learned while moving from RowWatch to SkyRing and repairing the sky calculations. It distinguishes reported device behavior, source changes, and checks that have not yet been run on the target watch. The current publication is the **history/readability SkyRing** build: colored HR and stress histories, goal-colored step bars, larger text/icons, and no bottom status footer. Current Sun/Moon positions and Moon phase remain; lunar event predictions do not.
 
 ## What has actually been verified
 
@@ -11,10 +11,11 @@ This records what we learned while moving from RowWatch to SkyRing and repairing
 | User reported intermittent black screens after sleep | There was a real wake/display problem in an earlier revision | No instrumented device trace established one exclusive cause |
 | Garmin reported a watchdog stack through `onUpdate → refresh → refreshLunarEvents → events → position → coordinates` | The old synchronous lunar-event calculation exceeded the callback's execution allowance | It does not establish an exact watchdog threshold or blame `cosD()` itself |
 | User reported lunar rise/set fields blanking after the bounded-worker replacement | That replacement did not meet the user's reliability expectations | The report does not establish whether scheduling, cache invalidation, location, or another lifecycle condition caused every blank |
-| Generic Connect IQ SDK 9.2.0 release and test compilation passed | The published sources/resources compile in that environment; 14 Monkey C tests compile | The FR965 device profile was missing locally; this was not an FR965 simulator run or execution of those tests |
+| Owner installed the September 25 history/readability build and reported it works on the FR965, including stress history | The previously blank simulated stress trace is available on the owner's physical watch | This is not a measurement of battery life, runtime margin, or every edge case |
+| Generic Connect IQ SDK 9.2.0 release and test compilation passed | The published sources/resources compile in that environment; 29 Monkey C test functions compile | The FR965 device profile was missing locally; this was not an FR965 simulator run or execution of those tests |
 | Source-derived arithmetic and reference checks passed | Checked Sun/Moon geometry, lunar reference values, horizon state, phase, and UTC/location handling agree with the recorded expectations | A JavaScript arithmetic replay is not Garmin VM execution or a device performance measurement |
 
-**The latest simplified build has not yet been confirmed by the user on FR965 hardware.** Its exact font rasterization, memory use, watchdog margin, firmware lifecycle behavior, and battery consumption remain device checks. See [VALIDATION.md](VALIDATION.md) for the short acceptance check.
+**The owner confirmed this build works on FR965 hardware.** That confirms the observed display and stress history, not quantified memory use, watchdog margin, battery consumption, or a completed overnight recovery regression. See [VALIDATION.md](VALIDATION.md) for the scope of confirmation and remaining checks.
 
 ## Fonts and readability
 
@@ -22,7 +23,7 @@ Earlier SkyRing experiments used generated bitmap atlases for text. The user rep
 
 All current text requests Garmin's native `RobotoCondensedRegular`, with `RobotoRegular` and built-in font fallbacks. Font ascents are measured once during layout. This follows the text approach that worked in RowWatch. The remaining bitmap font resources contain **icons only**, not letters or numeric readings. Native font availability and exact rendering still depend on the device.
 
-Small labels deliberately use bright off-white colors, including `#E2DDD4` and `#DCD8D0`. Colorful sunrise and sunset glyphs remain distinct: orange/yellow for sunrise and blue/yellow for sunset. The outer ring and enlarged content layout were retained when lunar event labels were removed.
+Small labels deliberately use bright off-white colors, including `#E2DDD4` and `#DCD8D0`. Colorful sunrise and sunset glyphs remain distinct: orange/yellow for sunrise and blue/yellow for sunset. The outer ring was retained when lunar event labels were removed. The later history/readability update removes the status footer and uses its space for larger native text, larger icons, and more separation between rows.
 
 Reference: Garmin [Graphics / getVectorFont](https://developer.garmin.com/connect-iq/api-docs/Toybox/Graphics.html#getVectorFont-instance_function).
 
@@ -44,9 +45,19 @@ Garmin's recovery complication reports **minutes**. The current formatter shows 
 
 An earlier report of `1h` when the watch's recovery screen was ready could have involved rounding or stale data. Without a contemporaneous raw complication value, the cause is not proven. The current code fixes the final-hour presentation and rereads recovery on wake, minute refresh, and an awake complication change. It does not invent its own recovery estimate or guarantee that Garmin's provider updates at the exact instant another built-in screen does.
 
-Stress uses Garmin's complication, with a recent valid history sample as fallback. It can retain a valid value for up to 30 minutes when a new sample is unavailable. That means the display is not always an instantaneous stress measurement. Historical sample timestamps are retained so rereading one old sample does not make it fresh again. HR and elevation likewise depend on whichever Garmin samples are available; the face does not improve the underlying sensor's accuracy.
+A later report described a brief `1m` immediately after waking while the built-in recovery screen was already at zero. The face has no local countdown, default-one reading, or persistent recovery cache. The current bounded confirmation displays native zero immediately and briefly holds an initial positive reading as `--`, then rereads on normal awake frames around +1 and +3 seconds. It adds no timers or forced wakes. A genuine `1m` is retained after confirmation. This is a mitigation for a possible transient provider value, not a proven diagnosis or a confirmed morning fix.
+
+Stress uses Garmin's complication, with a recent valid history sample as fallback. It can retain a valid value for up to 30 minutes when a new sample is unavailable. That means the display is not always an instantaneous stress measurement. Historical sample timestamps are retained so rereading one old sample does not make it fresh again. HR likewise depends on whichever Garmin samples are available; the face does not improve the underlying sensor's accuracy.
 
 Reference: Garmin [Complications](https://developer.garmin.com/connect-iq/api-docs/Toybox/Complications.html), especially recovery time and stress.
+
+## Stress history, simulator behavior, and missing data
+
+The stress meter was replaced with a four-hour history because the large number already communicates current stress. Both HR and stress histories use 24 ten-minute averages and rebuild together about every five minutes while awake. Fixed saturated colors convey the absolute bands even as chart height rescales; purple stress denotes a low measured score, not a sleep-stage classification. Current stress and history are separate data paths: the retained current number is never inserted into the chart.
+
+The owner saw a current stress number and a blank history in the SDK 9.2.0 simulator, then confirmed the same build works on the watch. A [Garmin forum report](https://forums.garmin.com/developer/connect-iq/f/connect-iq-web-store/441912/emulator-sets-sensor-history-samples-time-into-future) describes simulator history timestamps in the future. Such samples fall outside this face's valid historical window, but no raw log proved that was the specific cause in this session. No simulator-specific workaround or diagnostic changes are shipped.
+
+The renderer requires at least two populated buckets and connects only neighboring populated buckets. Isolated older measurements may produce no visible mark. Missing observations are not zeroes and are not joined by fabricated lines; measured stress zero is valid. A blank chart can therefore reflect sparse or unavailable history even when a current number is present. See the [display guide](DISPLAY_GUIDE.md) and [release color table](RELEASE_NOTES.md#color-meaning).
 
 ## Requested readings that are absent
 
@@ -58,6 +69,7 @@ Reference: Garmin [Complications](https://developer.garmin.com/connect-iq/api-do
 | Sleep | Not implemented or validated on this target. Current Garmin documentation lists a sleep-score complication starting with API 6.0.2; that alone does not establish availability on the user's FR965 firmware. |
 | Exercise load, altitude acclimation, heat acclimation | Not implemented. A reliable supported source for these specific readings on this target was not established during this work. Training status, where exposed, should not be silently substituted for numerical exercise load. |
 | Chest-strap connection indicator | Not implemented or proven. A general Bluetooth/phone connection indicator does not establish that a specific HR strap is connected or supplying the displayed HR. |
+| Battery, weather-age timer, and current elevation | Removed from the bottom row at the owner's request to reduce clutter and improve readability. Weather observation age still controls stale styling internally; daily floors climbed remains. These are layout choices, not missing APIs. |
 | Body Battery and SpO2 | Deliberately excluded by the user. |
 
 Revisit an omitted reading only when its exact meaning, public source, target support, and failure behavior can be demonstrated. Do not add speculative identifiers or require an outside account just to fill a slot.
@@ -66,11 +78,11 @@ Revisit an omitted reading only when its exact meaning, public source, target su
 
 The weather icon uses Garmin's **condition code**, not merely daytime/nighttime. Clear and partly cloudy states have day/night variants; cloudy, rain, snow, thunder, fog, and wind conditions have their own groups. Unknown codes display `?`. Cloud cover is not inferred from the user's view of the sky.
 
-Garmin's `CurrentConditions` is cached weather. The face reads its observation time and displays its age as `WX`; rereading the object does not fetch a new observation. This project does not make network weather requests or guarantee weather updates at a fixed interval. A stale or geographically different station observation can disagree with conditions at the user's wrist.
+Garmin's `CurrentConditions` is cached weather. The face reads its observation time for stale-weather styling; the visible `WX` age timer has been removed. Rereading the object does not fetch a new observation. This project does not make network weather requests or guarantee weather updates at a fixed interval. A stale or geographically different station observation can disagree with conditions at the user's wrist.
 
-The last weather field shows **precipitation chance at 30% or more**, otherwise UV. It does not switch simply because the condition is cloudy or sunny. Narrow layouts may omit high/low temperatures and then that last field to avoid overlap. Elevation may similarly lose its unit or be omitted from the footer when it will not fit.
+The last weather field shows **precipitation chance at 30% or more**, otherwise UV. It does not switch simply because the condition is cloudy or sunny. Narrow layouts may omit high/low temperatures and then that last field to avoid overlap. The bottom battery/elevation/weather-age row has been removed entirely; its readings are not relocated.
 
-The `7d` step total is **today so far plus the previous six local calendar dates**. It moves forward each local date, rather than resetting with the intensity-minutes week. It is not an exact trailing 168-hour sum. Garmin daily history is matched by date, so missing dates and DST are not treated as fixed 24-hour buckets. An explicit zero is valid; missing history is not fabricated as zero. `7d*` indicates an incomplete total. Weekly intensity minutes and its goal are Garmin's own values, not a reconstruction of literal minutes in HR zones. Floors displays the climbed total without a daily goal.
+The `7d` step total is **today so far plus the previous six local calendar dates**. It moves forward each local date, rather than resetting with the intensity-minutes week. It is not an exact trailing 168-hour sum. Garmin daily history is matched by date, so missing dates and DST are not treated as fixed 24-hour buckets. An explicit zero is valid; missing history is not fabricated as zero. Valid daily bars are green below that date's recorded goal and yellow at or above it. Missing goals do not imply success; adaptive historical goals are not replaced with today's target. `7d*` indicates an incomplete total. Weekly intensity minutes and its goal are Garmin's own values, not a reconstruction of literal minutes in HR zones. Floors displays the climbed total without a daily goal.
 
 References: Garmin [CurrentConditions](https://developer.garmin.com/connect-iq/api-docs/Toybox/Weather/CurrentConditions.html), [Weather conditions](https://developer.garmin.com/connect-iq/api-docs/Toybox/Weather.html), and [ActivityMonitor](https://developer.garmin.com/connect-iq/api-docs/Toybox/ActivityMonitor.html). The date-window implementation is in `source/DaySteps.mc`.
 
@@ -84,7 +96,7 @@ UTC, real location, double-precision day counts, and lunar coordinates matter. T
 
 The failed event experiment repeatedly calculated lunar coordinates across a 48-hour window, with additional crossing refinement, inside one screen update. The supplied watchdog stack and that code path identify the expensive search. Drawing the rim marker was not the bulk operation. Caching helped later updates but did not protect the first calculation with an empty cache.
 
-A replacement spread event calculations across bounded awake updates and retained progress across sleeps. Numerical and source scheduling checks did not establish satisfactory watch behavior: the user still reported blank event fields. Rather than add more state and visual clutter, the current build removes moonrise/set, next-full/new predictions, their workers, caches, lifecycle hooks, and placeholders entirely. They are not merely hidden. The footer has its earlier spacing again.
+A replacement spread event calculations across bounded awake updates and retained progress across sleeps. Numerical and source scheduling checks did not establish satisfactory watch behavior: the user still reported blank event fields. Rather than add more state and visual clutter, the current build removes moonrise/set, next-full/new predictions, their workers, caches, lifecycle hooks, and placeholders entirely. They are not merely hidden. That simplification initially restored the footer's spacing. The later history/readability update removes the footer entirely and redistributes the space among the retained readings.
 
 The retained lunar calculation evaluates **one current position** during a normal astronomy refresh. There is no future-event scan. Sunrise/sunset and their colorful icons remain. Current Moon phase remains; a future full/new date is a separate calculation and is absent.
 

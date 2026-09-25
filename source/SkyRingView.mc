@@ -18,27 +18,30 @@ module Lay {
     const RING_W = 12;
     const CONTENT_R = 211.0; // Inner track edge minus 3px clearance.
     const MARKER_R = 214;    // 12px markers remain inside the 227px display.
-    const ICON_MAIN = 26;
-    const ICON_SMALL = 20;
-    const ICON_ADV = 32;
-    const SMALL_ADV = 24;
-    const PEAK_ICON_Y = -198;
-    const PEAK_Y = -178;
+    const ICON_MAIN = 28;
+    const ICON_SMALL = 22;
+    const ICON_ADV = 34;
+    const SMALL_ADV = 26;
+    const PEAK_ICON_Y = -201;
+    const PEAK_Y = -181;
     const DATE_Y = -157;
-    const TIME_Y = -82;
-    const SOLAR_Y = -50;
-    const VIT_Y = 0;
+    const TIME_Y = -78;
+    const SOLAR_Y = -46;
+    const VIT_Y = 8;
     const VIT_DX = 100;
-    const ROWA_Y = 68;
-    const ROWB_Y = 106;
-    const ENV_Y = 144;
-    const STAT_Y = 174;
+    const SPARK_W = 84.0;
+    const SPARK_TOP = 13;
+    const SPARK_BOTTOM = 38;
+    const ROWA_Y = 87;
+    const ROWB_Y = 125;
+    const ENV_Y = 163;
     const HORIZ_X = 200;
-    const HORIZ_ICON_Y = -46;
+    const HORIZ_ICON_Y = -52;
     const HORIZ_LABEL_Y = -12;
     const RAIN_MIN = 30;        // show rain chance instead of UV from this % up
     const STALE_MIN = 120;      // dim the weather row when data is older than this
     const HOLD_SEC = 1800;      // keep the last good stress reading this long
+    const HISTORY_SAMPLES = 1024; // per series; preserve gaps if native data exceeds this bound
 }
 
 class SkyRingView extends WatchUi.WatchFace {
@@ -83,7 +86,6 @@ class SkyRingView extends WatchUi.WatchFace {
     // Settings / device
     private var mIs24 as Boolean = false;
     private var mStatuteTemp as Boolean = true;
-    private var mStatuteElev as Boolean = true;
     private var mDateStr as String = "";
 
     // Metrics
@@ -95,6 +97,7 @@ class SkyRingView extends WatchUi.WatchFace {
     private var m7d = null;
     private var m7dComplete as Boolean = false;
     private var mBars = null;
+    private var mBarGoals = null;
     private var mStress = null;
     private var mStressAt as Number = 0;
     private var mTempC = null;
@@ -105,13 +108,13 @@ class SkyRingView extends WatchUi.WatchFace {
     private var mUv = null;
     private var mHiC = null;
     private var mLoC = null;
-    private var mAltM = null;
-    private var mBattery = 0.0;
     private var mRecId = null;
     private var mStressId = null;
     private var mRecoveryMin = null;
+    private var mRecoveryRead = new RecoveryReadState();
     private var mHrSpark = null;
-    private var mHrSparkAt as Number = 0;
+    private var mStressSpark = null;
+    private var mHistoryAt as Number = -1;
 
     function initialize() {
         WatchFace.initialize();
@@ -146,13 +149,13 @@ class SkyRingView extends WatchUi.WatchFace {
     }
 
     function onLayout(dc as Graphics.Dc) as Void {
-        fTime = nativeFont(88);
-        fN42 = nativeFont(44);
-        fN34 = nativeFont(38);
-        fN28 = nativeFont(32);
-        fT22 = nativeFont(24);
-        fL20 = nativeFont(22);
-        fL18 = nativeFont(20);
+        fTime = nativeFont(92);
+        fN42 = nativeFont(48);
+        fN34 = nativeFont(42);
+        fN28 = nativeFont(36);
+        fT22 = nativeFont(26);
+        fL20 = nativeFont(24);
+        fL18 = nativeFont(22);
         aTime = Graphics.getFontAscent(fTime);
         aN42 = Graphics.getFontAscent(fN42);
         aN34 = Graphics.getFontAscent(fN34);
@@ -244,6 +247,7 @@ class SkyRingView extends WatchUi.WatchFace {
         if (WakeState.needsRefresh(mode, mLastDisplayMode, mLastFrameAt, now.value())) {
             mRefreshKey = -1;
             mHrHistoryPollAt = -1;
+            mRecoveryRead.wake(now.value());
         }
         mLastDisplayMode = mode;
         mLastFrameAt = now.value();
@@ -254,9 +258,13 @@ class SkyRingView extends WatchUi.WatchFace {
             mRefreshKey = key;
             mComplicationsDirty = false;
         } else if (mComplicationsDirty) {
-            readRecovery();
+            readRecovery(now);
             readStress(now);
             mComplicationsDirty = false;
+        } else if (mRecoveryRead.due(now.value())) {
+            // Two bounded recovery-only rechecks on normal awake frames.
+            // Do not repeat astronomy/history work or force extra redraws.
+            readRecovery(now);
         }
         if (mAstro == null) {
             return;
@@ -268,7 +276,6 @@ class SkyRingView extends WatchUi.WatchFace {
         drawRowA(dc, cx, cy);
         drawRowB(dc, cx, cy);
         drawEnv(dc, cx, cy);
-        drawStatus(dc, cx, cy);
     }
 
     private function refresh(now as Time.Moment, clock as System.ClockTime) as Void {
@@ -284,16 +291,14 @@ class SkyRingView extends WatchUi.WatchFace {
 
         readStress(now);
         mStatuteTemp = ds.temperatureUnits == System.UNIT_STATUTE;
-        mStatuteElev = ds.elevationUnits == System.UNIT_STATUTE;
 
         readActivity();
         readWeather(now);
-        readElevation();
-        readRecovery();
-        mBattery = System.getSystemStats().battery;
-        if (mHrSpark == null || now.value() - mHrSparkAt >= 300) {
-            mHrSpark = buildHrSpark(now);
-            mHrSparkAt = now.value();
+        readRecovery(now);
+        if (mHistoryAt < 0 || now.value() < mHistoryAt || now.value() - mHistoryAt >= 300) {
+            mHrSpark = buildHistory(now, false);
+            mStressSpark = buildHistory(now, true);
+            mHistoryAt = now.value();
         }
     }
 
@@ -416,6 +421,7 @@ class SkyRingView extends WatchUi.WatchFace {
     private function readActivity() as Void {
         var am = ActivityMonitor.getInfo();
         mSteps = (am has :steps) ? am.steps : null;
+        var stepGoal = (am has :stepGoal) ? am.stepGoal : null;
         mCal = (am has :calories) ? am.calories : null;
         mFloors = (am has :floorsClimbed) ? am.floorsClimbed : null;
         mIntGoal = (am has :activeMinutesWeekGoal) ? am.activeMinutesWeekGoal : null;
@@ -438,12 +444,14 @@ class SkyRingView extends WatchUi.WatchFace {
                 var h = hist[i];
                 if (h != null && h.startOfDay != null && h.steps != null) {
                     var hd = Gregorian.info(h.startOfDay, Time.FORMAT_SHORT);
-                    records.add([DaySteps.dayNumber(hd.year, hd.month, hd.day), h.steps]);
+                    var dayGoal = (h has :stepGoal) ? h.stepGoal : null;
+                    records.add([DaySteps.dayNumber(hd.year, hd.month, hd.day), h.steps, dayGoal]);
                 }
             }
         }
-        var summary = DaySteps.summarize(today, mSteps, records);
+        var summary = DaySteps.summarizeWithGoals(today, mSteps, stepGoal, records);
         mBars = summary[:bars];
+        mBarGoals = summary[:goals];
         m7d = summary[:sum];
         m7dComplete = summary[:complete];
     }
@@ -480,36 +488,21 @@ class SkyRingView extends WatchUi.WatchFace {
         }
     }
 
-    private function readElevation() as Void {
-        mAltM = null;
-        var ai = Activity.getActivityInfo();
-        if (ai != null && ai.altitude != null) {
-            mAltM = ai.altitude;
-            return;
-        }
-        if ((Toybox has :SensorHistory) && (SensorHistory has :getElevationHistory)) {
-            var it = SensorHistory.getElevationHistory({ :period => 1, :order => SensorHistory.ORDER_NEWEST_FIRST });
-            var s = it.next();
-            if (s != null) {
-                mAltM = s.data;
+    private function readRecovery(now as Time.Moment) as Void {
+        var raw = null;
+        if (mRecId != null) {
+            try {
+                var c = Complications.getComplication(mRecId);
+                if (c != null) {
+                    raw = c.value;
+                }
+            } catch (e) {
+                raw = null;
             }
         }
-    }
-
-    private function readRecovery() as Void {
-        mRecoveryMin = null;
-        if (mRecId == null) {
-            return;
-        }
-        try {
-            var c = Complications.getComplication(mRecId);
-            if (c != null) {
-                var v = c.value;
-                mRecoveryMin = (v != null && v >= 0) ? v : null;
-            }
-        } catch (e) {
-            mRecoveryMin = null;
-        }
+        // Always consume the read, including errors/missing data, so the wake
+        // confirmation cannot loop or silently reuse a previous READY value.
+        mRecoveryMin = mRecoveryRead.accept(raw, now.value());
     }
 
     private function currentHr() {
@@ -551,42 +544,47 @@ class SkyRingView extends WatchUi.WatchFace {
         return null;
     }
 
-    // Last 4 hours of heart rate, averaged into 24 ten-minute buckets (null = no data).
-    private function buildHrSpark(now as Time.Moment) {
-        if (!(Toybox has :SensorHistory) || !(SensorHistory has :getHeartRateHistory)) {
+    // Both charts use the same four-hour clock and ten-minute buckets.
+    // Read native history only; the current stress value can be held during
+    // movement and must never be copied into missing historical buckets.
+    private function buildHistory(now as Time.Moment, stress as Boolean) {
+        if (!(Toybox has :SensorHistory)) {
             return null;
         }
         var span = 4 * 3600;
-        var n = 24;
-        var bucket = span / n;
         var start = now.value() - span;
-        var sums = new [n];
-        var cnts = new [n];
-        for (var i = 0; i < n; i++) {
-            sums[i] = 0;
-            cnts[i] = 0;
-        }
-        var it = SensorHistory.getHeartRateHistory({
-            :period => new Time.Duration(span),
-            :order => SensorHistory.ORDER_OLDEST_FIRST
-        });
-        var s = it.next();
-        while (s != null) {
-            var w = s.when;
-            if (s.data != null && w != null) {
-                var idx = (w.value() - start) / bucket;
-                if (idx >= 0 && idx < n) {
-                    sums[idx] += s.data;
-                    cnts[idx] += 1;
+        var buckets = new HistoryBuckets(now.value(), stress ? 0 : 1,
+            stress ? 100 : ActivityMonitor.INVALID_HR_SAMPLE - 1);
+        try {
+            var it = null;
+            if (stress) {
+                if (!(SensorHistory has :getStressHistory)) { return null; }
+                it = SensorHistory.getStressHistory({
+                    :period => new Time.Duration(span),
+                    :order => SensorHistory.ORDER_NEWEST_FIRST
+                });
+            } else {
+                if (!(SensorHistory has :getHeartRateHistory)) { return null; }
+                it = SensorHistory.getHeartRateHistory({
+                    :period => new Time.Duration(span),
+                    :order => SensorHistory.ORDER_NEWEST_FIRST
+                });
+            }
+            // Fixed work limit even if firmware supplies unexpectedly dense
+            // history. If capped, older buckets stay gaps; nothing is fabricated.
+            for (var i = 0; i < Lay.HISTORY_SAMPLES; i++) {
+                var sample = it.next();
+                if (sample == null) { break; }
+                if (sample.when != null) {
+                    var when = sample.when.value();
+                    if (when < start) { break; } // Explicit newest-first iterator.
+                    buckets.add(when, sample.data);
                 }
             }
-            s = it.next();
+        } catch (e) {
+            return null;
         }
-        var out = new [n];
-        for (var j = 0; j < n; j++) {
-            out[j] = (cnts[j] > 0) ? sums[j].toFloat() / cnts[j] : null;
-        }
-        return out;
+        return buckets.finish();
     }
 
     // ------------------------------------------------------------------ helpers
@@ -896,18 +894,18 @@ class SkyRingView extends WatchUi.WatchFace {
         var hr = currentHr();
         var colHr = cx - Lay.VIT_DX;
         vital(dc, colHr, base, "H", (hr != null) ? Fmt.round(hr).format("%d") : "--", null);
-        drawSpark(dc, colHr, base + 13, base + 30);
+        drawSpark(dc, colHr, base + Lay.SPARK_TOP, base + Lay.SPARK_BOTTOM, mHrSpark, false);
 
-        // Stress (live) + 10 segments
+        // Current stress + four-hour history on the same clock as HR.
         vital(dc, cx, base, "X", (mStress != null) ? Fmt.round(mStress).format("%d") : "--", null);
-        drawSegments(dc, cx, base + 18, mStress);
+        drawSpark(dc, cx, base + Lay.SPARK_TOP, base + Lay.SPARK_BOTTOM, mStressSpark, true);
 
         // Native recovery replaces the unsupported external-HRV field.
         var colV = cx + Lay.VIT_DX;
         var recovery = RecoveryTime.display(mRecoveryMin);
         vital(dc, colV, base, "R", recovery[:value] as String, recovery[:unit]);
         var label = recovery[:label] as String;
-        text(dc, colV - tw(dc, label, fL18) / 2, base + 33, fL18, aL18, Pal.DIM, label);
+        text(dc, colV - tw(dc, label, fL18) / 2, base + 36, fL18, aL18, Pal.DIM, label);
     }
 
     private function vital(dc as Graphics.Dc, colX as Number, base as Number, ic as String, val as String, unit) as Void {
@@ -934,11 +932,12 @@ class SkyRingView extends WatchUi.WatchFace {
         }
     }
 
-    private function drawSpark(dc as Graphics.Dc, colX as Number, yTop as Number, yBot as Number) as Void {
-        if (mHrSpark == null) {
+    private function drawSpark(dc as Graphics.Dc, colX as Number, yTop as Number, yBot as Number,
+            values, stress as Boolean) as Void {
+        if (values == null) {
             return;
         }
-        var s = mHrSpark as Array;
+        var s = values as Array;
         var n = s.size();
         var lo = 999.0;
         var hi = 0.0;
@@ -954,59 +953,46 @@ class SkyRingView extends WatchUi.WatchFace {
         if (cnt < 2) {
             return;
         }
-        if (hi - lo < 12.0) {
+        var minimumSpan = stress ? 20.0 : 12.0;
+        if (hi - lo < minimumSpan) {
             var mid = (hi + lo) / 2.0;
-            lo = mid - 6.0;
-            hi = mid + 6.0;
+            lo = mid - minimumSpan / 2.0;
+            hi = mid + minimumSpan / 2.0;
         }
-        var x0 = colX - 38.0;
-        var dx = 76.0 / (n - 1);
+        var x0 = colX - Lay.SPARK_W / 2.0;
+        var dx = Lay.SPARK_W / (n - 1);
         var hgt = (yBot - yTop).toFloat();
         dc.setPenWidth(2);
-        dc.setColor(Pal.CORAL, Graphics.COLOR_TRANSPARENT);
         var px = 0.0;
         var py = 0.0;
+        var previousColor = Pal.TRACK;
         var started = false;
         for (var j = 0; j < n; j++) {
             if (s[j] != null) {
                 var x = x0 + j * dx;
                 var y = yBot - ((s[j] as Float) - lo) / (hi - lo) * hgt;
+                var color = stress ? ChartColors.stress(s[j]) : ChartColors.heartRate(s[j]);
                 if (started) {
-                    dc.drawLine(px, py, x, y);
+                    // Give adjacent buckets their own fixed reading color.
+                    // The vertical autoscale never changes these thresholds.
+                    var midX = (px + x) / 2.0;
+                    var midY = (py + y) / 2.0;
+                    dc.setColor(previousColor, Graphics.COLOR_TRANSPARENT);
+                    dc.drawLine(px, py, midX, midY);
+                    dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+                    dc.drawLine(midX, midY, x, y);
                 }
                 px = x;
                 py = y;
+                previousColor = color;
                 started = true;
             } else {
                 started = false; // Missing samples are gaps, not an invented connecting trace.
             }
         }
         if (started) {
+            dc.setColor(previousColor, Graphics.COLOR_TRANSPARENT);
             dc.fillCircle(px, py, 2.5);
-        }
-    }
-
-    private function drawSegments(dc as Graphics.Dc, colX as Number, y as Number, val) as Void {
-        var w = 7.0;
-        var g = 2.0;
-        var x0 = colX - (10 * w + 9 * g) / 2.0;
-        var filled = (val != null) ? val.toFloat() / 10.0 : 0.0;
-        for (var i = 0; i < 10; i++) {
-            var x = x0 + i * (w + g);
-            dc.setColor(Pal.TRACK, Graphics.COLOR_TRANSPARENT);
-            dc.fillRoundedRectangle(x, y, w, 7, 1.5);
-            var f = filled - i;
-            if (f > 0.0) {
-                if (f > 1.0) {
-                    f = 1.0;
-                }
-                var fw = w * f;
-                if (fw < 2.0) {
-                    fw = 2.0;
-                }
-                dc.setColor(Pal.CORAL, Graphics.COLOR_TRANSPARENT);
-                dc.fillRoundedRectangle(x, y, fw, 7, 1.5);
-            }
         }
     }
 
@@ -1061,7 +1047,6 @@ class SkyRingView extends WatchUi.WatchFace {
                 mx = b[i] as Number;
             }
         }
-        var past = Pal.scale(Pal.MINT, 0.42);
         var barWidth = (width - 6 * 3.0) / 7.0;
         var stride = barWidth + 3.0;
         for (var j = 0; j < 7; j++) {
@@ -1071,11 +1056,13 @@ class SkyRingView extends WatchUi.WatchFace {
                 dc.fillCircle(x0 + j * stride + barWidth / 2.0, base - 1, 1);
                 continue;
             }
-            var h = (b[j] as Number) * 30.0 / mx;
+            var h = (b[j] as Number) * 34.0 / mx;
             if (h < 2.0) {
                 h = 2.0;
             }
-            dc.setColor((j == 6) ? Pal.MINT : past, Graphics.COLOR_TRANSPARENT);
+            // Historical bars use that day's goal, never today's auto-goal.
+            var goal = (mBarGoals != null) ? (mBarGoals as Array)[j] : null;
+            dc.setColor(ChartColors.steps(b[j], goal), Graphics.COLOR_TRANSPARENT);
             dc.fillRoundedRectangle(x0 + j * stride, base - h, barWidth, h, 1.5);
         }
     }
@@ -1095,7 +1082,7 @@ class SkyRingView extends WatchUi.WatchFace {
         var wf = Lay.ICON_ADV + tw(dc, fStr, valueFont);
         var gap = 26;
         // Include the goal line below the baseline in the circle-fit bound.
-        var edgeY = (Lay.ROWB_Y + 11).toFloat();
+        var edgeY = (Lay.ROWB_Y + 7).toFloat();
         var available = (2.0 * Math.sqrt(Lay.CONTENT_R * Lay.CONTENT_R - edgeY * edgeY)).toNumber() - 16;
         if (wi + wk + wf + 2 * gap > available) {
             gap = (available - wi - wk - wf) / 2;
@@ -1117,14 +1104,14 @@ class SkyRingView extends WatchUi.WatchFace {
             text(dc, x + Lay.ICON_ADV + wiv + 1, base, fL18, aL18, Pal.DIMMER, gStr);
         }
         dc.setColor(Pal.TRACK, Graphics.COLOR_TRANSPARENT);
-        dc.fillRoundedRectangle(x, base + 7, wi, 3, 1.5);
+        dc.fillRoundedRectangle(x, base + 4, wi, 2, 1.0);
         if (mIntWeek != null && mIntGoal != null && (mIntGoal as Number) > 0) {
             var f = (mIntWeek as Number).toFloat() / (mIntGoal as Number);
             if (f > 1.0) { f = 1.0; }
             var fw = wi * f;
             if (fw >= 1.0) {
                 dc.setColor(Pal.MINT, Graphics.COLOR_TRANSPARENT);
-                dc.fillRoundedRectangle(x, base + 7, fw < 3.0 ? 3.0 : fw, 3, 1.5);
+                dc.fillRoundedRectangle(x, base + 4, fw < 2.0 ? 2.0 : fw, 2, 1.0);
             }
         }
         x += wi + gap;
@@ -1135,7 +1122,7 @@ class SkyRingView extends WatchUi.WatchFace {
         text(dc, x + Lay.ICON_ADV, base, valueFont, valueAsc, Pal.INK, fStr);
     }
 
-    // ------------------------------------------------------------------ environment & status
+    // ------------------------------------------------------------------ environment
 
     private function tempStr(c) as String {
         var t = c.toFloat();
@@ -1168,7 +1155,8 @@ class SkyRingView extends WatchUi.WatchFace {
         var stale = (mWxAgeMin != null) && ((mWxAgeMin as Number) > Lay.STALE_MIN);
         var iconCol = stale ? Pal.scale(Pal.SKY, 0.5) : Pal.SKY;
         var valCol = stale ? Pal.DIM : Pal.INK;
-        // Old weather may dim its icon, but never its small text. WX reports age.
+        // Keep stale-data handling even though the WX age footer is removed.
+        // Old weather may dim its icon, but never its small text.
         var subCol = Pal.DIMMER;
 
         var items = [];
@@ -1187,7 +1175,7 @@ class SkyRingView extends WatchUi.WatchFace {
         var y = (Lay.ENV_Y + 2).toFloat();
         var avail = (2.0 * Math.sqrt(Lay.CONTENT_R * Lay.CONTENT_R - y * y)).toNumber() - 16;
         if (rowWidth(dc, items, gap) > avail) {
-            gap = 10;
+            gap = 8;
         }
         if (rowWidth(dc, items, gap) > avail) {
             var first = items[0] as Array;
@@ -1232,72 +1220,6 @@ class SkyRingView extends WatchUi.WatchFace {
         if (n == 3 || n == 11 || (n >= 13 && n <= 15) || (n >= 24 && n <= 27)
                 || n == 31 || n == 45 || n == 49) { return "r"; }         // rain, showers, drizzle
         return "?";                                                       // unknown or future condition code
-    }
-
-    // Weather observation age | battery | elevation
-    private function drawStatus(dc as Graphics.Dc, cx as Number, cy as Number) as Void {
-        var base = cy + Lay.STAT_Y;
-        var gap = 10;
-        var wxAdv = tw(dc, "WX", fL18) + 4;
-        var rStr = "--";
-        if (mWxAgeMin != null) {
-            rStr = (mWxAgeMin < 60) ? mWxAgeMin.format("%d") + "m" : (mWxAgeMin / 60).format("%d") + "h";
-        }
-        var bStr = Fmt.round(mBattery).format("%d") + "%";
-        var wr = tw(dc, rStr, fT22);
-        var wb = tw(dc, bStr, fL20);
-
-        var eStr = "--";
-        if (mAltM != null) {
-            var e = mAltM.toFloat();
-            if (mStatuteElev) {
-                e = e * 3.28084;
-            }
-            eStr = Fmt.thousands(Fmt.round(e));
-        }
-        var eUnit = mStatuteElev ? "ft" : "m";
-        var we = tw(dc, eStr, fL20);
-        var wu = tw(dc, eUnit, fL18) + 2;
-
-        // Keep inside the ring: drop the unit first, then the elevation.
-        var y = (Lay.STAT_Y + 2).toFloat();
-        var avail = (2.0 * Math.sqrt(Lay.CONTENT_R * Lay.CONTENT_R - y * y)).toNumber() - 16;
-        var core = wxAdv + wr + gap + Lay.ICON_ADV + wb;
-        var showElev = true;
-        if (core + gap + Lay.SMALL_ADV + we + wu > avail) {
-            wu = 0;
-        }
-        if (core + gap + Lay.SMALL_ADV + we + wu > avail) {
-            showElev = false;
-        }
-        var total = core + (showElev ? gap + Lay.SMALL_ADV + we + wu : 0);
-        var x = cx - total / 2;
-
-        text(dc, x, base, fL18, aL18, Pal.SKY, "WX");
-        x += wxAdv;
-        text(dc, x, base, fT22, aT22, Pal.INK, rStr);
-        x += wr + gap;
-
-        var top = base - 23;
-        glyph(dc, x, top, fI22, "T", Pal.DIMMER);
-        var pct = mBattery.toFloat() / 100.0;
-        if (pct > 1.0) { pct = 1.0; }
-        var fill = Fmt.round(14.0 * pct);
-        if (fill < 0) { fill = 0; }
-        dc.setColor(pct < 0.15 ? Pal.CORAL : Pal.DIMMER, Graphics.COLOR_TRANSPARENT);
-        if (fill > 0) { dc.fillRectangle(x + 5, top + 11, fill, 6); }
-        x += Lay.ICON_ADV;
-        text(dc, x, base, fL20, aL20, Pal.DIM, bStr);
-        x += wb + gap;
-
-        if (showElev) {
-            glyph(dc, x, base - Lay.ICON_SMALL, fI16, "m", Pal.DIMMER);
-            x += Lay.SMALL_ADV;
-            text(dc, x, base, fL20, aL20, Pal.DIM, eStr);
-            if (wu > 0) {
-                text(dc, x + we + 2, base, fL18, aL18, Pal.DIMMER, eUnit);
-            }
-        }
     }
 
 }

@@ -126,8 +126,8 @@ def main():
     global INKSCAPE
     INKSCAPE = find_inkscape()
     os.makedirs(OUT, exist_ok=True)
-    icon_font("icons22", ICONS20, 26, 1.7)
-    icon_font("icons16", ICONS14, 20, 2.0)
+    icon_font("icons22", ICONS20, 28, 1.7)
+    icon_font("icons16", ICONS14, 22, 2.0)
     xml = ['<fonts>',
            '    <!-- Text uses Garmin native vector fonts; only icon glyphs are bundled. -->',
            '    <font id="F_icons22" filename="icons22.fnt" antialias="true" />',
