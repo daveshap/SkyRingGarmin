@@ -1,0 +1,5 @@
+<fonts>
+    <!-- Text uses Garmin native vector fonts; only icon glyphs are bundled. -->
+    <font id="F_icons22" filename="icons22.fnt" antialias="true" />
+    <font id="F_icons16" filename="icons16.fnt" antialias="true" />
+</fonts>

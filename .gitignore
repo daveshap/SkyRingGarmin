@@ -1,0 +1,28 @@
+# Garmin compiler outputs and generated intermediates
+bin/
+build/
+gen/
+*.prg
+*.prg.debug.xml
+*.iq
+*.mir
+*.debug.xml
+*.stats
+*.prf
+*.PRF
+
+# Signing material, local configuration, and diagnostic logs
+*.der
+*.pem
+*.key
+developer_key*
+.env
+.env.*
+.vscode/settings.json
+*.log
+
+# Development caches and OS files
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
