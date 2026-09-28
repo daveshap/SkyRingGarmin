@@ -2,7 +2,7 @@
 
 ![SkyRing repository social preview](images/skyring-social-preview.png)
 
-The PNG is 1280 × 640 pixels (2:1), with an opaque background and a file size below 1 MB. It was generated using the built-in image-generation tool with [the current screen export](../SkyRing%20Final.png) as a visual reference, then resized and losslessly encoded for upload. This is promotional artwork; the README embeds the original, unmodified screen export.
+The PNG is 1280 × 640 pixels (2:1), with an opaque background and a file size below 1 MB. It was generated using the built-in image-generation tool with [the supplied screen export](../SkyRing%20Final.png) as a visual reference, then resized and losslessly encoded for upload. This is promotional artwork; the README embeds the original, unmodified screen export. Both images predate the September 28 weather/recovery polish and are retained as existing project artwork, not evidence of the latest build's rendering.
 
 To activate it, open the repository's **Settings → General → Social preview → Edit → Upload an image**, then select [skyring-social-preview.png](images/skyring-social-preview.png). Committing the file does not automatically change GitHub's social-preview setting.
 

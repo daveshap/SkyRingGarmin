@@ -20,10 +20,15 @@ function translate(s) {
         .replace(/\b(\d+(?:\.\d+)?)d\b/g, '$1')
         .replace(/new \[(\w+)\]/g, 'new Array($1)')
         .replace(/\.size\(\)/g, '.length')
+        .replace(/\.length\(\)/g, '.length')
         .replace(/:(\w+)\s*=>/g, '$1:')
         .replace(/\[:(\w+)\]/g, '["$1"]')
         .replace(/(\w+(?:\[\d+\])?) instanceof Number/g, 'isMcNumber($1)')
         .replace(/(\w+(?:\[\d+\])?) instanceof Float/g, 'isMcFloat($1)')
+        .replace(/(\w+) instanceof Long/g, "(typeof $1 === 'bigint')")
+        .replace(/(\w+) instanceof Double/g, 'isMcFloat($1)')
+        .replace(/(\w+) instanceof String/g, "(typeof $1 === 'string')")
+        .replace(/(\w+) instanceof Boolean/g, "(typeof $1 === 'boolean')")
         .replace(/(\w+) has :(\w+)/g, '("$2" in $1)');
 }
 function block(s, prefix) {
@@ -47,11 +52,7 @@ const Lay = moduleFrom('Lay', 'SPARK_W,HISTORY_SAMPLES', 'SkyRingView');
 const Fmt = moduleFrom('Fmt', 'round');
 const ChartColors = moduleFrom('ChartColors', 'heartRate,stress,steps,PURPLE,BLUE,GREEN,YELLOW,ORANGE,RED');
 const DaySteps = moduleFrom('DaySteps', 'dayNumber,summarize,summarizeWithGoals');
-const RecoveryTime = moduleFrom('RecoveryTime', 'validMinutes,display');
-function RecoveryReadState() {
-    return eval('(()=>{' + translate(block(source('RecoveryTime'), 'class RecoveryReadState ')) +
-        ';return {wake,due,accept};})()');
-}
+const RecoveryTime = moduleFrom('RecoveryTime', 'validHours,displayHours');
 
 // Integer bucket indexing uses Monkey C Number / Number truncation.
 function HistoryBuckets(now, min, max) {
@@ -124,32 +125,15 @@ assert.equal(DaySteps.dayNumber(2026,11,2)-DaySteps.dayNumber(2026,11,1), 1);
 assert.equal(DaySteps.dayNumber(2027,1,1)-DaySteps.dayNumber(2026,12,31), 1);
 console.log('PASS dated adaptive goals, sparse days, duplicates, today ownership, and midnight/calendar rollover');
 
-for (const invalid of [null,-1,'1',1.5]) assert.equal(RecoveryTime.display(invalid).value, '--');
-for (const [minutes, value, unit] of [[0,'0','h'],[1,'1','m'],[59,'59','m'],[60,'1','h'],[61,'2','h']]) {
-    assert.equal(RecoveryTime.display(minutes).value, value);
-    assert.equal(RecoveryTime.display(minutes).unit, unit);
+for (const hours of [0,1,7,96]) {
+    assert.equal(RecoveryTime.validHours(hours),hours);
+    assert.deepEqual(RecoveryTime.displayHours(hours), {value:String(hours),unit:'h',label:hours===0?'READY':'RECOVERY'});
 }
-const recovering = new RecoveryReadState();
-recovering.wake(100);
-assert.equal(recovering.accept(1,100), null);
-assert.equal(recovering.accept(1,100), null);
-assert.equal(recovering.due(100), false);
-assert.equal(recovering.due(101), true);
-assert.equal(recovering.accept(1,101), 1, 'A genuine last minute must survive confirmation');
-assert.equal(recovering.due(102), false);
-assert.equal(recovering.due(103), true);
-assert.equal(recovering.accept(0,103), 0);
-for (const t of [104,120,160,1000]) assert.equal(recovering.due(t), false);
-assert.equal(recovering.due(90), true);
-assert.equal(recovering.accept(1,90), null);
-assert.equal(recovering.accept(0,91), 0);
-recovering.accept(null,93);
-assert.equal(recovering.due(94), false);
-recovering.wake(200);
-assert.equal(recovering.accept(1,200), null);
-assert.equal(recovering.accept(1,210), 1);
-assert.equal(recovering.due(210), false, 'Late frames must not queue catch-up reads');
-console.log('PASS recovery validation, true last-minute retention, bounded rechecks, missing data, and clock rollback');
+for (const invalid of [null,-1,'7',7.5,NaN,Infinity,false]) {
+    assert.equal(RecoveryTime.validHours(invalid),null);
+    assert.deepEqual(RecoveryTime.displayHours(invalid), {value:'--',unit:null,label:'RECOVERY'});
+}
+console.log('PASS raw whole-hour recovery contract: 0h READY, positive hours RECOVERY, explicit units, unknown invalid readings');
 
 const view = source('SkyRingView');
 function methodText(name) {
@@ -291,38 +275,122 @@ console.log('PASS actual refresh cache: paired series rebuilds, five-minute cade
 const updateText=methodText('onUpdate');
 assert(updateText.includes('var key = now.value() / 60;'), 'Review changed minute-cache arithmetic');
 const integration=eval(`(()=>{
-    var t=600, mode=2, native=1, fullReads=0, recoveryReads=0, mRecoveryMin=null;
+    var t=600, mode=2, native=7, fullReads=0, recoveryReads=0, mRecoveryHours=null;
     var mLastDisplayMode=0, mLastFrameAt=-1, mRefreshKey=-1, mHrHistoryPollAt=-1;
-    var mComplicationsDirty=false, mAstro={}, mRecId=1;
-    var mRecoveryRead=new RecoveryReadState();
+    var mComplicationsDirty=false, mAstro={}, mEnvCycleAt=-1, mEnvShowDew=false, redraws=0;
     var Time={now:()=>({value:()=>t})};
-    var Complications={getComplication:()=>{ recoveryReads++; if(native==='throw') throw Error('unavailable'); return {value:native}; }};
-    var displayMode=()=>mode, readStress=()=>{};
-    var drawRing=()=>{}, drawHeader=()=>{}, drawVitals=()=>{}, drawRowA=()=>{}, drawRowB=()=>{}, drawEnv=()=>{};
+    var ActivityMonitor={getInfo:()=>{
+        recoveryReads++;
+        if(native==='throw') throw Error('unavailable');
+        return {timeToRecovery:native};
+    }},Toybox={ActivityMonitor};
+    var WatchUi={requestUpdate:()=>redraws++};
+    var displayMode=()=>mode, isAwake=()=>mode===2, readStress=()=>{};
+    var drawRing=()=>{}, drawHeader=()=>{}, drawVitals=()=>{}, drawRowA=()=>{}, drawRowB=()=>{};
+    ${methodText('updateWeatherCycle')}
+    var drawEnv=(dc,cx,cy,at)=>updateWeatherCycle(at);
     ${methodText('readRecovery')}
-    var refresh=now=>{ fullReads++; readRecovery(now); };
+    ${methodText('onComplicationChanged')}
+    var refresh=now=>{ fullReads++; readRecovery(); };
     ${updateText.replace('var key = now.value() / 60;', 'var key = Math.trunc(now.value() / 60);')}
-    return {frame:(at,display,value,dirty=false)=>{
-        t=at;mode=display;native=value;mComplicationsDirty=dirty;
-        var draws=0;
-        onUpdate({setColor(){draws++;},clear(){draws++;},getWidth:()=>454,getHeight:()=>454});
-        return {fullReads,recoveryReads,value:mRecoveryMin,draws};
-    }};
+    return {
+        weatherCycle:()=>({at:mEnvCycleAt,dew:mEnvShowDew}),
+        notify:()=>{onComplicationChanged({});return {recoveryReads,redraws};},
+        frame:(at,display,value)=>{
+            t=at;mode=display;native=value;
+            var draws=0;
+            onUpdate({setColor(){draws++;},clear(){draws++;},getWidth:()=>454,getHeight:()=>454});
+            return {fullReads,recoveryReads,value:mRecoveryHours,draws};
+        }
+    };
 })()`);
-assert.deepEqual(integration.frame(600,2,1),{fullReads:1,recoveryReads:1,value:null,draws:2});
-assert.equal(integration.frame(601,2,0).value,0);
-assert.equal(integration.frame(602,2,0).recoveryReads,2);
-assert.equal(integration.frame(603,2,0).recoveryReads,3);
-for(let t=604;t<660;t++) assert.equal(integration.frame(t,2,0).recoveryReads,3);
-assert.equal(integration.frame(660,2,0).fullReads,2);
-assert.equal(integration.frame(661,1,1,true).recoveryReads,4);
-assert.equal(integration.frame(662,0,1,true).draws,0);
-assert.equal(integration.frame(663,2,1).value,null);
-assert.equal(integration.frame(664,2,null,true).value,null);
-assert.equal(integration.frame(665,2,'throw',true).value,null);
-assert.equal(integration.frame(666,2,0,true).value,0);
-assert.equal(integration.frame(650,2,1).value,null);
-assert.equal(integration.frame(651,2,0).value,0);
+assert.deepEqual(integration.frame(600,2,7),{fullReads:1,recoveryReads:1,value:7,draws:2},
+    'Seven native hours must display immediately on wake');
+assert.equal(integration.frame(601,2,0).value,7,'Ordinary second frames retain the minute cache');
+assert.deepEqual(integration.notify(),{recoveryReads:1,redraws:1},'Stress callback must not read recovery');
+assert.equal(integration.frame(601,2,0).recoveryReads,1,'Stress refresh must not read recovery');
+for(let t=602;t<660;t++) assert.equal(integration.frame(t,2,0).recoveryReads,1,
+    'No +1/+3 rechecks or second-by-second recovery polling');
+assert.deepEqual(integration.frame(660,2,0),{fullReads:2,recoveryReads:2,value:0,draws:2});
+assert.deepEqual(integration.weatherCycle(),{at:660,dew:false});
+assert.equal(integration.frame(661,1,7).recoveryReads,2);
+assert.deepEqual(integration.weatherCycle(),{at:660,dew:false},'LOW_POWER does not advance weather');
+assert.deepEqual(integration.notify(),{recoveryReads:2,redraws:1},'Asleep callback must not wake or read');
+assert.equal(integration.frame(662,0,7).draws,0);
+assert.deepEqual(integration.weatherCycle(),{at:660,dew:false},'OFF does not advance weather');
+assert.equal(integration.frame(663,2,7).value,7,'Wake must refresh native hours');
+assert.deepEqual(integration.weatherCycle(),{at:663,dew:false},'Observed wake restarts RH');
+assert.equal(integration.notify().recoveryReads,3);
+assert.equal(integration.frame(664,2,0).value,7);
+assert.deepEqual(integration.frame(650,2,0),{fullReads:4,recoveryReads:4,value:0,draws:2},
+    'Clock rollback must replace stale recovery immediately');
+assert.deepEqual(integration.weatherCycle(),{at:650,dew:false},'Rollback restarts RH');
+assert.equal(integration.frame(651,2,1).recoveryReads,4);
+assert.deepEqual(integration.frame(657,2,1),{fullReads:5,recoveryReads:5,value:1,draws:2},
+    'A resume gap without callbacks still refreshes native hours');
+assert.deepEqual(integration.weatherCycle(),{at:657,dew:true},'Slow awake frame gap switches instead of resetting RH');
+assert.deepEqual(integration.frame(720,2,'throw'),{fullReads:6,recoveryReads:6,value:null,draws:2},
+    'Native failure must clear the cached reading');
+assert.deepEqual(integration.weatherCycle(),{at:720,dew:false},'Minute/data refresh preserves the running weather cycle');
+
+// Exercise the real ActivityMonitor reader independently of rendering.
+function recoveryReadHarness() {
+    return eval(`(()=>{
+        var mRecoveryHours=null,hours=null,options={},hourReads=0;
+        var ActivityMonitor={getInfo:()=>{
+            hourReads++;
+            if(options.hoursThrows) throw Error('missing');
+            if(options.infoNull) return null;
+            return options.noField?{}:{timeToRecovery:hours};
+        }};
+        var Toybox={ActivityMonitor};
+        ${methodText('readRecovery')}
+        return {read:(hourValue,opts={})=>{
+            hours=hourValue;options=opts;
+            Toybox=opts.noModule?{}:{ActivityMonitor};
+            readRecovery();
+            return {hours:mRecoveryHours,hourReads,display:RecoveryTime.displayHours(mRecoveryHours)};
+        }};
+    })()`);
+}
+const nativeRecovery=recoveryReadHarness();
+for(const hours of [7,1,0]) {
+    assert.deepEqual(nativeRecovery.read(hours).display,{value:String(hours),unit:'h',label:hours===0?'READY':'RECOVERY'});
+}
+for(const invalid of [null,-1,7.5,'7',NaN,Infinity,false]) {
+    nativeRecovery.read(7);
+    assert.deepEqual(nativeRecovery.read(invalid).display,{value:'--',unit:null,label:'RECOVERY'},
+        'Invalid values must clear a previously valid native reading');
+}
+for(const opts of [{hoursThrows:true},{infoNull:true},{noField:true},{noModule:true}]) {
+    nativeRecovery.read(7);
+    assert.equal(nativeRecovery.read(7,opts).display.value,'--');
+}
+const beforeAbsent=nativeRecovery.read(7).hourReads;
+assert.equal(nativeRecovery.read(7,{noModule:true}).hourReads,beforeAbsent);
+console.log('PASS actual recovery reader: raw 0h/1h/7h, unavailable module/field/error handling, and clearing stale values');
+
+// Stress is the only complication. Failure to subscribe cannot invalidate its ID.
+function initializeComplications(fault='') {
+    let mStressId=null,subscriptions=[],callbackCalls=0;
+    const WatchFace={initialize(){}};
+    const Complications={
+        COMPLICATION_TYPE_STRESS:22,
+        Id:function(type){if(fault==='id')throw Error('id');this.type=type;},
+        registerComplicationChangeCallback(){callbackCalls++;if(fault==='callback')throw Error('callback');},
+        subscribeToUpdates(id){subscriptions.push(id.type);if(fault==='subscription')throw Error('subscription');return fault!=='false';}
+    };
+    const Toybox=fault==='noModule'?{}:{Complications};
+    eval(methodText('initialize').replace('method(:onComplicationChanged)','()=>{}')+';initialize();');
+    return {stress:mStressId?.type??null,subscriptions,callbackCalls};
+}
+for(const fault of ['', 'callback','subscription','false']) {
+    assert.deepEqual(initializeComplications(fault),{stress:22,subscriptions:[22],callbackCalls:1});
+}
+assert.deepEqual(initializeComplications('id'),{stress:null,subscriptions:[],callbackCalls:1});
+assert.deepEqual(initializeComplications('noModule'),{stress:null,subscriptions:[],callbackCalls:0});
+console.log('PASS stress-only complication initialization: independent ID, callback and subscription failure isolation');
+
 for(const file of fs.readdirSync(path.join(root,'source')).filter(f=>f.endsWith('.mc'))) {
     const code=fs.readFileSync(path.join(root,'source',file),'utf8').replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g,'');
     assert(!/Toybox\.Timer|new\s+(?:Timer\.)?Timer\b/.test(code), 'Unexpected timer in '+file);
@@ -331,8 +399,14 @@ assert(!/requestUpdate\(/.test(methodText('readRecovery')));
 assert(!/requestUpdate\(/.test(methodText('onUpdate')));
 assert(/mBarGoals\s*=\s*summary\[:goals\]/.test(view));
 assert(/var dayGoal = \(h has :stepGoal\) \? h.stepGoal : null;/.test(view));
-console.log('PASS actual awake/update wiring: recovery-only rechecks, minute cache, OFF/LOW early returns, errors, rollback; no timers');
+console.log('PASS actual awake/update wiring: wake/minute-only recovery, stress callback isolation, OFF/LOW early returns, rollback, no timers');
 const codeOnly=view.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g,'');
+assert(!/COMPLICATION_TYPE_RECOVERY_TIME|\bmRecId\b|\bmRecoveryMin\b|RecoveryReadState|\bmRecoveryRead\b/.test(codeOnly),
+    'Recovery must use raw ActivityMonitor hours only');
+assert(!/validMinutes|function display\(/.test(source('RecoveryTime')),
+    'Minute formatting must be removed from the raw-hour recovery module');
+assert(!/Complications|requestUpdate|println/.test(methodText('readRecovery')),
+    'Recovery must not use complications, force redraws, or retain diagnostic logging');
 assert(!/\b(drawStatus|drawSegments|buildHrSpark|mBattery|mBat|mElev|mStatuteDist)\b/.test(codeOnly),
     'Removed footer or old gauge code unexpectedly remains');
 assert(!/getSystemStats|\.battery\b|\.altitude\b/.test(codeOnly),

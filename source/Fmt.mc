@@ -8,14 +8,15 @@ module Pal {
     const CORAL = 0xFF7B6B;   // body
     const MINT = 0x5FD6A4;    // movement
     const SKY = 0x7CB6FF;     // environment
+    const DEW = 0xB275FF;     // vivid violet dew-point thermometer/drop; distinct from RH blue
     const GOLD = 0xFFC46B;    // sun / solar time
-    const SUN = 0xFFDB8E;
+    const SUN = 0xFFF000;     // saturated lemon for sun artwork, without a white blend
     const HALO = 0x33271A;    // GOLD at ~20% over black
     const RISE_ICON = 0xFF995C; // orange arrow / horizon beneath a yellow sun
     const SET_ICON = 0x7CB6FF;  // blue arrow / horizon beneath a yellow sun
     const TRACK = 0x2C2C31;
     const TICK = 0x6D685E;
-    const PEAK_ICON = 0xFFC46B;   // noon-peak label at the top of the ring
+    const PEAK_ICON = 0xFFF000;   // noon-peak sun matches the other sun artwork
     const PEAK_TEXT = 0xFFE0A0;
     const ALT_ICON = 0xD9A95C;    // current sun elevation in the solar line
     const ALT_TEXT = 0xFFE0A0;

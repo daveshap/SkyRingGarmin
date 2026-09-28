@@ -4,7 +4,7 @@
 
 SkyRing is a personal glanceable dashboard for the Forerunner 965. It favors stable visual locations, a consistent icon vocabulary, native text, and a handful of meaningful groups. The sky ring adds context without requiring a second screen. The clock is now prominent; the earlier RowWatch prototype prioritized rows more strictly.
 
-The icon palette groups body/recovery in coral, movement in mint, weather in blue, and solar information in gold. Most values are warm off-white. Icons and numbers keep those colors. `ChartColors` supplies fixed saturated display bands for the HR and stress traces, plus green/yellow daily step-goal highlighting. Charts remain tied to adjacent measurements: HR history, stress history, daily steps, and intensity-goal completion.
+The icon palette groups body/recovery in coral, movement in mint, and solar information in gold. Weather icons use fixed vivid condition colors regardless of observation age, including yellow Sun/lightning, lavender Moon, silver cloud, blue rain, icy-cyan snow, and mint wind. Dew point has its own lavender thermometer-and-drop icon so it stays distinct from humidity's blue droplet in their shared slot. Most values are warm off-white; fresh humidity/dew-point readings use their fixed icon colors blended 65% toward warm off-white. `ChartColors` supplies the condition palette, saturated display bands for HR/stress, green/yellow step-goal highlighting, and standard UV risk categories. The UV label uses the saturated category color; its number uses the same 65% blend toward warm off-white. Charts remain tied to adjacent measurements: HR history, stress history, daily steps, and intensity-goal completion.
 
 ## Source map
 
@@ -16,14 +16,15 @@ The icon palette groups body/recovery in coral, movement in mint, weather in blu
 | `source/Astro.mc` | Current solar geometry, displayed solar times, ring thresholds, and one current lunar-position call. |
 | `source/Lunar.mc` | Current lunar coordinates, phase, hour angle, altitude, azimuth, and horizon test. No future-event search. |
 | `source/DaySteps.mc` | Date-based seven-day aggregation, de-duplication, missing-day distinction, and per-date goal association. |
-| `source/RecoveryTime.mc` | Recovery-minute formatting and bounded initial-reading confirmation using normal awake frames. |
-| `source/ChartColors.mc` | Fixed BPM/stress display bands and goal-met color; no sensor reads or state. |
+| `source/RecoveryTime.mc` | Validation and formatting of native whole-hour recovery only. |
+| `source/ChartColors.mc` | Fixed BPM/stress display bands, goal-met color, UV risk-category color, and weather-condition colors; no sensor reads or state. |
 | `source/HistoryBuckets.mc` | Fixed-size 24-bucket accumulator shared by four-hour HR and stress histories; preserves missing values and measured stress zero. |
-| `source/Fmt.mc` | Fixed palette and numerical/time formatting. |
+| `source/Fmt.mc` | Fixed palette, including `Pal.DEW` (`#B275FF`), and numerical/time formatting. |
 | `resources/fonts/` | Two bitmap **icon** atlases. No bitmap text font. |
-| `tools/gen_icons.py` | Source artwork and optional atlas generation using Pillow and Inkscape. |
+| `tools/gen_icons.py` | Source artwork and optional atlas generation using Pillow and Inkscape; humidity is glyph `D`, dew point is glyph `d`, and cloud overlays are `g`/`k`. |
 | `tools/check_rim_positions.js` | Host arithmetic/geometry regression checks using translated production methods. |
 | `tools/check_candidate.js` | Host-side source-derived history, drawing, cache, recovery, goal, color, and lifecycle checks; not Garmin VM execution. |
+| `tools/check_weather.js` | Host-side weather rendering, String content equality, layered colors, rotation, contrast, and missing-data checks; not Garmin VM execution. |
 | `tests/` | Date/steps/goals, history buckets, chart colors, wake-state, recovery, and lunar-position regression tests. |
 
 ## Display lifecycle
@@ -36,9 +37,11 @@ The view extends `WatchUi.WatchFace`. `System.getDisplayMode()` is authoritative
 
 `onShow()` and `onExitSleep()` invalidate the minute and HR-fallback polling caches and request one redraw. A display-mode transition, clock rollback, or gap of more than five seconds between awake frames also invalidates those caches. This catches resumes even when expected callbacks are absent. `onEnterSleep()` requests a clearing update when visible. `onHide()` updates the local visibility state.
 
-Native stress/recovery complication callbacks mark data dirty even while sleeping. They request an update only when awake. The next awake callback rereads the data. There is no timer, animation, scroll loop, GPS subscription, or brightness/timeout override.
+Native stress complication callbacks mark data dirty even while sleeping. They request an update only when awake. The next awake callback rereads the data. There is no timer, continuous animation, scroll loop, GPS subscription, or brightness/timeout override. The humidity/dew-point icon-and-value slot switches every two seconds using normal high-power updates; `mEnvCycleAt` records when the current selection began, and `mEnvShowDew` records which reading is selected. After two seconds, the next awake frame flips once. Actual show/wake transitions reset to humidity; delayed frames and data refreshes do not reset the phase. Clock rollback resets the dwell. No modulo phase or catch-up loop is used. Its native dew-point value is read and reset alongside the existing weather cache. No dew-point estimate is calculated. The slot reserves the wider humidity/dew-point form so switching does not shift adjacent readings. Its symbols remain icons, not custom bitmap text.
 
-`RecoveryReadState.wake(nowSec)` is rearmed by that same existing wake/resume detection; it does not change display mode or wake flags. It holds the first positive native recovery value until a later second, publishes native zero immediately, and schedules at most two recovery-only rereads at approximately +1/+3 seconds. `due()` is checked only after the OFF/LOW_POWER returns and only when neither full refresh nor a dirty complication read ran in that frame. Every result, including null/error, goes through `accept()` so unavailable data cannot cause unbounded polling or preserve an old READY state. Clock rollback restarts the window. No recovery data is persisted.
+Recovery reads `ActivityMonitor.getInfo().timeToRecovery` during the normal full refresh on wake and once per minute while awake. `RecoveryTime.validHours()` accepts nonnegative native integers; `displayHours()` retains those hours without conversion. Invalid/unavailable data clears to `--`; a native zero displays `0h`. The caption is `READY` at zero native hours and `RECOVERY` otherwise. The `0h` reading remains visible; READY is a presentation convention for this coarse native value. There is no recovery complication ID/subscription, minute formatter, wake reread state, diagnostic logger, or private countdown.
+
+Stress complication ID construction, callback registration, and subscription remain isolated so notification setup failures cannot block direct stress reads. Stress notifications never trigger a recovery-only read.
 
 ## Refresh and data ownership
 
@@ -46,8 +49,7 @@ Native stress/recovery complication callbacks mark data dirty even while sleepin
 | --- | --- |
 | Current clock | Read and rendered on each awake update; seconds are not displayed. |
 | Location, current astronomy, activity, weather, stress, recovery | Minute cache, invalidated on wake/resume. |
-| Stress and recovery notification | Reread on next awake dirty update, even within the same minute. |
-| Recovery after wake | At most two extra reads near +1s/+3s on ordinary awake frames; no repeated astronomy/history work. |
+| Stress notification | Reread stress on the next awake dirty update, even within the same minute. |
 | Current HR | Prefer activity's current HR on each awake render. |
 | HR fallback | Search up to 32 recent samples, at most every 30 seconds; accept observations no more than five minutes old. |
 | Four-hour HR and stress traces | Shared four-hour window, 24 ten-minute averages each; rebuilt together approximately every five minutes during full refreshes and after clock rollback. |
@@ -70,9 +72,11 @@ Without a usable position, latitude-dependent markers and sunrise/set graphics a
 
 ## Permissions and native sources
 
-The manifest requests `SensorHistory`, `Positioning`, and `ComplicationSubscriber`. These support historical readings, access to existing location data, and native stress/recovery notifications. There is no `Communications` or background permission. Registration/read failures for complications lead to fallback or unavailable readings, not an external fetch.
+The manifest requests `SensorHistory`, `Positioning`, and `ComplicationSubscriber`. These support historical readings, access to existing location data, and native stress notifications. There is no `Communications` or background permission. Registration/read failures for complications lead to fallback or unavailable readings, not an external fetch.
 
 The full per-element API and formatting details are in [DISPLAY_GUIDE.md](DISPLAY_GUIDE.md). Missing data is generally `--`, incomplete weekly step history is `7d*`, and unknown weather is `?`. These meanings must remain distinct from measured zero.
+
+`condGlyph()` still chooses the weather family from Garmin's condition code and the existing day/night test. `drawConditionIcon()` colors that glyph and overlays a silver cloud on partly cloudy and precipitation/thunderstorm families. The three appended main-atlas glyphs (dew point and two cloud layers) bring the total to 27 within the existing 256 × 128-pixel atlas. Native text and weather selection logic are unchanged. Stale observations halve each icon layer's own color.
 
 ## Layout and fonts
 

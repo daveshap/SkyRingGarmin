@@ -77,11 +77,19 @@ This checks the current position calculations and rim mapping against reference 
 node .\tools\check_candidate.js
 ```
 
-Despite its original filename, this checks the current source: history buckets and sample filtering, chart drawing, shared cache timing, colors, daily goals, recovery confirmation, footer removal, and awake-only guards. These are host checks, not Garmin VM execution or battery measurements.
+Despite its original filename, this checks the current source: history buckets and sample filtering, chart drawing, shared cache timing, colors, daily goals, raw-hour recovery reads, footer removal, and awake-only guards. These are host checks, not Garmin VM execution or battery measurements.
+
+### Source-derived weather checks
+
+```powershell
+node .\tools\check_weather.js
+```
+
+This checks weather color selection with distinct String objects, layered icons, UV and moisture contrast, native dew-point handling, and rotation through delayed or duplicate awake callbacks. It also verifies that the former String-identity comparison fails the same cases. It is a host-side adapter, not an exact Garmin VM or visual simulator.
 
 ### Native Monkey C unit tests
 
-`monkey-tests.jungle` adds `tests` to the source path. `monkey.jungle` is the normal app build. The 29 test functions cover rolling daily steps and goals, history buckets, chart colors, wake-state decisions, recovery formatting/confirmation, and lunar position/horizon cases. Development checks compiled these tests; they were not executed in the unavailable local FR965 simulator.
+`monkey-tests.jungle` adds `tests` to the source path. `monkey.jungle` is the normal app build. The 26 test functions cover rolling daily steps and goals, history buckets, chart/weather colors and String equality, wake-state decisions, raw-hour recovery formatting including READY, and lunar position/horizon cases. Development checks compiled these tests; they were not executed in the unavailable local FR965 simulator.
 
 For the VS Code route, set **Monkey C: Jungle Files** to `monkey-tests.jungle` locally, then run **Monkey C: Run Tests** or use the extension's Test Explorer with the FR965 selected. Restore `monkey.jungle` before building the installable release.
 
@@ -129,3 +137,5 @@ The face persists its last usable location; step history is read from Garmin and
 - [Garmin: unit testing](https://developer.garmin.com/connect-iq/core-topics/unit-testing/)
 
 If an online documentation page shows only navigation, use **Monkey C: View Documentation** for the complete documentation shipped with your SDK. The Java requirement and Windows `/t` detail above were also checked directly in SDK 9.2.0's bundled documentation and Windows launcher scripts.
+
+This build displays raw recovery hours and has no recovery diagnostics to enable. See [the current update](RAW_HOURS_UPDATE.md).

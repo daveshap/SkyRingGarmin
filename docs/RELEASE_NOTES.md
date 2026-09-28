@@ -1,8 +1,31 @@
-# History and readability release — September 25, 2026
+# SkyRing release notes
 
-The owner installed this build on a Forerunner 965 and confirmed that it works, including stress history, on September 25, 2026. This publication preserves that tested runtime and its resources. The previous published build remains available at commit `78f1a1ac774af6b008278f3e35150477a5e17a61` for rollback. See [VALIDATION.md](VALIDATION.md) for the scope of that confirmation and the development checks.
+## September 28, 2026 — weather and recovery polish
 
-## What changed and why
+The owner reported that the current build "all seems to work" and requested publication. This release preserves the runtime and resources from that accepted polish build; documentation records the combined September 26–28 changes and their rationale.
+
+- **Recovery:** read Garmin's native `ActivityMonitor.Info.timeToRecovery` whole hours on normal wake/minute refreshes. Zero shows `0h` with **READY**, positive values show their returned hours with **RECOVERY**, and unavailable values show `--`. The recovery-minute complication, first-frame suppression, retries, fallback arbitration, and diagnostic logger are removed. The original cause of the recurring `1m` remains unresolved; that source is no longer used. [Details](RAW_HOURS_UPDATE.md).
+- **Weather artwork:** use a lemon-yellow Sun, lavender Moon, silver clouds, blue rain, cyan snow, teal fog, and mint wind. Compound icons retain a separately colored accent beneath their silver cloud layer. String comparisons use `.equals()` so color selection and overlays follow their contents. Icon colors stay vivid even when Garmin's observation is old; temperature text keeps its existing styling. [Details](WEATHER_UPDATE.md#september-28-color-selection-fix).
+- **UV:** apply standard risk-category colors to the saturated label and a paler matching number. The number blends 65% toward warm off-white. Rain chance continues to replace UV at 30% or more.
+- **Humidity / dew point:** alternate native readings in one fixed-width slot with distinct blue/lavender icons and paler numbers. The slot explicitly tracks which reading is displayed and its two-second dwell. A delayed awake frame flips once when due; ordinary refreshes and frame gaps preserve the selection state. This uses Garmin's normal awake callbacks without a timer or timeout override. [Polish rationale](POLISH_UPDATE.md).
+
+The accepted build retains the sky-ring position/phase calculations, native fonts, readable layout, measured HR/stress histories, goal-colored daily steps, and wake-only lifecycle. No battery, elevation, weather-age footer, or lunar-event prediction row is reintroduced.
+
+Generic SDK 9.2.0 release and test builds and source-derived checks passed. The 26 native test functions were compiled, not run in the Garmin VM; the local FR965 profile is unavailable. Owner acceptance is separate from those development checks and does not establish battery consumption, runtime margin, or every data edge case. [Validation record](VALIDATION.md).
+
+Build `monkey.jungle` for `fr965` using the existing developer key and installed filename; [Windows instructions](BUILD_WINDOWS.md) cover installation. The previously published history/readability build is commit `15f0fdf10e00b5548edf1724d9d54d8fb63fd5ba` and remains a rollback point. No generic executable is supplied as an installable watch build.
+
+## Development history — September 26–28
+
+The September 26 weather candidate introduced UV colors, native dew point, and layered condition icons. The September 27 recovery candidate removed deliberate positive-reading blanking and briefly used a minute complication with an hourly fallback and optional diagnostics. The user still observed `1m`, so the September 28 change moved entirely to raw hours. A later weather fix replaced String identity comparisons, and the final polish increased contrast, restored READY at zero, and repaired the rotation's behavior under delayed frames. The combined final build is the release described above. Earlier candidate ZIPs are not the current source.
+
+The [September 27 investigation](RECOVERY_INVESTIGATION.md) remains a dated record of evidence and the superseded implementation. [Recovery debug notes](RECOVERY_DEBUG.md) identify the retired logging path.
+
+## September 25, 2026 — history and readability (historical record)
+
+The owner installed this earlier build on a Forerunner 965 and confirmed that it worked, including stress history. The following record describes the September 25 implementation. Its minute-based recovery confirmation and associated installation checks were superseded on September 28; use the current instructions above. The still-older published build is available at `78f1a1ac774af6b008278f3e35150477a5e17a61`.
+
+### What changed and why
 
 - Replace the stress gauge with a four-hour colored history, matching the HR trace. The large current-stress number already shows the current level; the trace adds context about how that level changed.
 - Remove the entire weather-age, battery, and elevation footer, including the battery/elevation reads. These fields were distracting and crowded the lower display. They are not relocated; floors climbed stays as the preferred daily climbing metric.
@@ -14,7 +37,7 @@ Both vertical axes adjust to the available values, with a minimum span of 12 bpm
 
 The ring, Sun/Moon calculations, native font family, icon identity and colors, seven-day goal colors, recovery confirmation, and wake-only lifecycle remain as in the preceding color/recovery build. Weather age is no longer visible but still controls stale-weather styling internally. The enlarged weather row can omit optional high/low, then UV/rain, when necessary to fit; temperature/conditions and humidity take priority.
 
-## Color meaning
+### Color meaning
 
 Colors apply only to the HR trace, stress trace, and seven daily step bars. Icons and numbers keep their existing colors.
 
@@ -31,7 +54,7 @@ HR colors use the ten-minute bucket averages; stress colors use rounded ten-minu
 
 Daily step bars are saturated green below the recorded goal and yellow at or above it. Each past bar uses that date's own `ActivityMonitor.History.stepGoal`; today uses `ActivityMonitor.Info.stepGoal`. Missing or invalid goals remain green, without inventing an achievement. Missing days remain gray dots. There are no extra goal numbers. Today remains the rightmost bar, and height still represents daily step count relative to the largest visible day.
 
-## Recovery confirmation and its limits
+### Recovery confirmation and its limits
 
 The owner observed a brief `1m` after waking even though Garmin's built-in recovery screen had been at zero. The baseline already clears the displayed value and fetches the native complication on wake; it has no local recovery countdown, default-one value, or persistent recovery cache. The native complication reports minutes but exposes no source timestamp. A transient native reading is plausible; it has not been proved on the watch.
 
@@ -41,7 +64,7 @@ This is a bounded confirmation/refresh mitigation, not proof of a firmware fix. 
 
 There are no added timers, forced updates, background services, storage writes, or changes to wake-only behavior. All rechecks occur after the existing awake guard. Normal rendering adds a bounded number of color changes and line segments; device battery use has not been measured.
 
-## Build, rollback, and follow-up checks
+### Build, rollback, and follow-up checks
 
 1. Keep your working source folder and device-built `SkyRing.prg` as the rollback copy.
 2. Clone or download this revision into a clean folder and open the folder containing `manifest.xml` in VS Code.
@@ -56,11 +79,11 @@ If the blip persists, record whether it lasts less than one second, around three
 
 No prebuilt `.prg` is included: the local generic build is for source checking and is not a device-targeted installable artifact. [VALIDATION.md](VALIDATION.md) records what was and was not executed.
 
-## Simulator finding
+### Simulator finding
 
 The owner saw a current stress value but a blank stress trace in the SDK 9.2.0 simulator, then confirmed that the same build displayed stress history on the physical watch. Current stress and historical stress use separate Garmin sources, so one can be available without the other. A [Garmin forum report](https://forums.garmin.com/developer/connect-iq/f/connect-iq-web-store/441912/emulator-sets-sensor-history-samples-time-into-future) describes simulator history timestamps in the future. This is a plausible explanation for samples being rejected by the four-hour history window, but no raw timestamp log established it for this particular simulator session. No simulator-specific workaround, fabricated history, or diagnostic source changes are included in this release.
 
-## Official API references
+### Official API references
 
 - [Recovery complication](https://developer.garmin.com/connect-iq/api-docs/Toybox/Complications.html#COMPLICATION_TYPE_RECOVERY_TIME-const): minute-valued native reading.
 - [Complication fields](https://developer.garmin.com/connect-iq/api-docs/Toybox/Complications/Complication.html): no observation timestamp.

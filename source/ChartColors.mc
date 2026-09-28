@@ -1,7 +1,7 @@
 import Toybox.Lang;
 
-// Fixed, saturated chart colors. These are display bands, not personalized HR
-// zones or clinical thresholds. Icons and numeric text keep their own palette.
+// Colors for charts, UV risk, and weather artwork. HR/stress bands are display
+// choices; UV uses the standard EPA/NWS exposure categories.
 module ChartColors {
     const PURPLE = 0xA64DFF;
     const BLUE = 0x2D7DFF;
@@ -9,6 +9,39 @@ module ChartColors {
     const YELLOW = 0xFFE338;
     const ORANGE = 0xFF8A22;
     const RED = 0xFF4048;
+    const WEATHER_SUN = 0xFFF000;   // saturated lemon; matches Pal.SUN
+    const WEATHER_MOON = 0xBD80FF;  // vivid lavender
+    const WEATHER_CLOUD = 0xDCEBFF; // bright cool silver, also used by cloud overlays
+    const WEATHER_FOG = 0x33E1C6;   // vivid teal
+    const WEATHER_RAIN = 0x258CFF;  // saturated blue
+    const WEATHER_SNOW = 0x26E6FF;  // icy cyan
+    const WEATHER_WIND = 0x34F0A0;  // bright mint
+    const WEATHER_HUMIDITY = 0x329BFF; // vivid blue RH droplet; distinct from dew point
+
+    // Glyph selection still comes from Garmin conditions and the existing
+    // solar day/night check. These colors affect weather artwork only.
+    // String == tests identity in Monkey C; compare contents across modules.
+    function condition(glyph as String) as Number {
+        if (glyph.equals("c") || glyph.equals("p") || glyph.equals("t")) { return WEATHER_SUN; }
+        if (glyph.equals("n") || glyph.equals("q")) { return WEATHER_MOON; }
+        if (glyph.equals("C")) { return WEATHER_CLOUD; }
+        if (glyph.equals("f")) { return WEATHER_FOG; }
+        if (glyph.equals("r")) { return WEATHER_RAIN; }
+        if (glyph.equals("s")) { return WEATHER_SNOW; }
+        if (glyph.equals("w")) { return WEATHER_WIND; }
+        return Pal.DIMMER;
+    }
+
+    // The caller passes the same rounded whole index shown on screen. Missing
+    // data is neutral, not a low-risk green zero. UV has no upper category cap.
+    function uvIndex(shown) as Number {
+        if (!(shown instanceof Number) || shown < 0) { return Pal.DIMMER; }
+        if (shown <= 2) { return GREEN; }
+        if (shown <= 5) { return YELLOW; }
+        if (shown <= 7) { return ORANGE; }
+        if (shown <= 10) { return RED; }
+        return PURPLE;
+    }
 
     // Use the measured BPM (including averaged samples), never the sparkline's
     // auto-scaled height, so the same rate has the same color on every day.

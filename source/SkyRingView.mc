@@ -39,7 +39,7 @@ module Lay {
     const HORIZ_ICON_Y = -52;
     const HORIZ_LABEL_Y = -12;
     const RAIN_MIN = 30;        // show rain chance instead of UV from this % up
-    const STALE_MIN = 120;      // dim the weather row when data is older than this
+    const STALE_MIN = 120;      // soften weather reading text when data is older than this
     const HOLD_SEC = 1800;      // keep the last good stress reading this long
     const HISTORY_SAMPLES = 1024; // per series; preserve gaps if native data exceeds this bound
 }
@@ -102,31 +102,39 @@ class SkyRingView extends WatchUi.WatchFace {
     private var mStressAt as Number = 0;
     private var mTempC = null;
     private var mHum = null;
+    private var mDewC = null;
+    private var mEnvCycleAt as Number = -1; // When the currently selected reading began.
+    private var mEnvShowDew as Boolean = false;
     private var mCond = null;
     private var mWxAgeMin = null;
     private var mRainPct = null;
     private var mUv = null;
     private var mHiC = null;
     private var mLoC = null;
-    private var mRecId = null;
     private var mStressId = null;
-    private var mRecoveryMin = null;
-    private var mRecoveryRead = new RecoveryReadState();
+    private var mRecoveryHours = null;
     private var mHrSpark = null;
     private var mStressSpark = null;
     private var mHistoryAt as Number = -1;
 
     function initialize() {
         WatchFace.initialize();
-        // Recovery time and live stress come from Garmin's own complications.
+        // Only stress uses complications. Recovery reads native ActivityMonitor hours.
         if (Toybox has :Complications) {
+            // Direct reads must not depend on notification setup succeeding.
+            try {
+                mStressId = new Complications.Id(Complications.COMPLICATION_TYPE_STRESS);
+            } catch (e) {
+            }
             try {
                 Complications.registerComplicationChangeCallback(method(:onComplicationChanged));
-                mRecId = new Complications.Id(Complications.COMPLICATION_TYPE_RECOVERY_TIME);
-                Complications.subscribeToUpdates(mRecId);
-                mStressId = new Complications.Id(Complications.COMPLICATION_TYPE_STRESS);
-                Complications.subscribeToUpdates(mStressId);
             } catch (e) {
+            }
+            if (mStressId != null) {
+                try {
+                    Complications.subscribeToUpdates(mStressId);
+                } catch (e) {
+                }
             }
         }
     }
@@ -244,10 +252,14 @@ class SkyRingView extends WatchUi.WatchFace {
 
         var clock = System.getClockTime();
         var now = Time.now();
+        // Restart the weather slot only at an observed wake/show transition.
+        // A slow frame gap still refreshes data without repeatedly pinning RH.
+        if (mLastFrameAt < 0 || mode != mLastDisplayMode) {
+            mEnvCycleAt = -1;
+        }
         if (WakeState.needsRefresh(mode, mLastDisplayMode, mLastFrameAt, now.value())) {
             mRefreshKey = -1;
             mHrHistoryPollAt = -1;
-            mRecoveryRead.wake(now.value());
         }
         mLastDisplayMode = mode;
         mLastFrameAt = now.value();
@@ -258,13 +270,8 @@ class SkyRingView extends WatchUi.WatchFace {
             mRefreshKey = key;
             mComplicationsDirty = false;
         } else if (mComplicationsDirty) {
-            readRecovery(now);
             readStress(now);
             mComplicationsDirty = false;
-        } else if (mRecoveryRead.due(now.value())) {
-            // Two bounded recovery-only rechecks on normal awake frames.
-            // Do not repeat astronomy/history work or force extra redraws.
-            readRecovery(now);
         }
         if (mAstro == null) {
             return;
@@ -275,7 +282,7 @@ class SkyRingView extends WatchUi.WatchFace {
         drawVitals(dc, cx, cy);
         drawRowA(dc, cx, cy);
         drawRowB(dc, cx, cy);
-        drawEnv(dc, cx, cy);
+        drawEnv(dc, cx, cy, now.value());
     }
 
     private function refresh(now as Time.Moment, clock as System.ClockTime) as Void {
@@ -294,7 +301,7 @@ class SkyRingView extends WatchUi.WatchFace {
 
         readActivity();
         readWeather(now);
-        readRecovery(now);
+        readRecovery();
         if (mHistoryAt < 0 || now.value() < mHistoryAt || now.value() - mHistoryAt >= 300) {
             mHrSpark = buildHistory(now, false);
             mStressSpark = buildHistory(now, true);
@@ -459,6 +466,7 @@ class SkyRingView extends WatchUi.WatchFace {
     private function readWeather(now as Time.Moment) as Void {
         mTempC = null;
         mHum = null;
+        mDewC = null;
         mCond = null;
         mWxAgeMin = null;
         mRainPct = null;
@@ -474,6 +482,9 @@ class SkyRingView extends WatchUi.WatchFace {
         }
         mTempC = cc.temperature;
         mHum = cc.relativeHumidity;
+        if (cc has :dewPoint) {
+            mDewC = cc.dewPoint; // Native Celsius; null means unavailable. Zero/negative are valid.
+        }
         mCond = cc.condition;
         mRainPct = cc.precipitationChance;
         mHiC = cc.highTemperature;
@@ -488,21 +499,20 @@ class SkyRingView extends WatchUi.WatchFace {
         }
     }
 
-    private function readRecovery(now as Time.Moment) as Void {
-        var raw = null;
-        if (mRecId != null) {
+    private function readRecovery() as Void {
+        // Read once during the normal wake/minute refresh. No recovery
+        // complication, unit guessing, delayed display, or synthetic countdown.
+        mRecoveryHours = null;
+        if (Toybox has :ActivityMonitor) {
             try {
-                var c = Complications.getComplication(mRecId);
-                if (c != null) {
-                    raw = c.value;
+                var info = ActivityMonitor.getInfo();
+                if (info != null && info has :timeToRecovery) {
+                    mRecoveryHours = RecoveryTime.validHours(info.timeToRecovery);
                 }
             } catch (e) {
-                raw = null;
+                mRecoveryHours = null;
             }
         }
-        // Always consume the read, including errors/missing data, so the wake
-        // confirmation cannot loop or silently reuse a previous READY value.
-        mRecoveryMin = mRecoveryRead.accept(raw, now.value());
     }
 
     private function currentHr() {
@@ -876,7 +886,7 @@ class SkyRingView extends WatchUi.WatchFace {
         }
         var sx = cx - (Lay.SMALL_ADV + ws + gap + Lay.SMALL_ADV + wa + gap + wdl) / 2;
         var base = cy + Lay.SOLAR_Y;
-        glyph(dc, sx, base - Lay.ICON_SMALL, fI16, "U", Pal.GOLD);
+        glyph(dc, sx, base - Lay.ICON_SMALL, fI16, "U", Pal.SUN);
         text(dc, sx + Lay.SMALL_ADV, base, fT22, aT22, Pal.GOLD, solarStr);
         sx += Lay.SMALL_ADV + ws + gap;
         glyph(dc, sx, base - Lay.ICON_SMALL, fI16, "L", Pal.ALT_ICON);
@@ -902,7 +912,7 @@ class SkyRingView extends WatchUi.WatchFace {
 
         // Native recovery replaces the unsupported external-HRV field.
         var colV = cx + Lay.VIT_DX;
-        var recovery = RecoveryTime.display(mRecoveryMin);
+        var recovery = RecoveryTime.displayHours(mRecoveryHours);
         vital(dc, colV, base, "R", recovery[:value] as String, recovery[:unit]);
         var label = recovery[:label] as String;
         text(dc, colV - tw(dc, label, fL18) / 2, base + 36, fL18, aL18, Pal.DIM, label);
@@ -1132,12 +1142,13 @@ class SkyRingView extends WatchUi.WatchFace {
         return Fmt.round(t).format("%d");
     }
 
-    // Item: [glyph or null, label before the value or null, value, suffix or null]
+    // Item: [glyph or null, label or null, value, suffix or null, optional reserved width]
     private function itemWidth(dc as Graphics.Dc, it as Array) as Number {
         var w = tw(dc, it[2] as String, fN28);
         if (it[0] != null) { w += Lay.ICON_ADV; }
         if (it[1] != null) { w += tw(dc, it[1] as String, fL18) + 4; }
         if (it[3] != null) { w += 5 + tw(dc, it[3] as String, fL18); }
+        if (it.size() > 4 && (it[4] as Number) > w) { w = it[4] as Number; }
         return w;
     }
 
@@ -1149,25 +1160,62 @@ class SkyRingView extends WatchUi.WatchFace {
         return total;
     }
 
-    // Temperature with the day's high/low | humidity | UV (rain chance instead when likely).
-    private function drawEnv(dc as Graphics.Dc, cx as Number, cy as Number) as Void {
+    // Advance once when the visible reading has had at least two seconds.
+    // Do not derive the phase from elapsed % 4: missed frames could repeatedly
+    // land on the same half-cycle. A late frame flips once, without catch-up work.
+    private function updateWeatherCycle(nowSec as Number) as Void {
+        if (mEnvCycleAt < 0 || nowSec < mEnvCycleAt) {
+            mEnvCycleAt = nowSec;
+            mEnvShowDew = false;
+        } else if (nowSec - mEnvCycleAt >= 2) {
+            mEnvCycleAt = nowSec;
+            mEnvShowDew = !mEnvShowDew;
+        }
+    }
+
+    // Temperature | humidity/dew point | UV or rain. Normal awake frames drive
+    // the two-second switch; no timer, extra weather request, or sleeping update.
+    private function drawEnv(dc as Graphics.Dc, cx as Number, cy as Number, nowSec as Number) as Void {
+        updateWeatherCycle(nowSec);
         var base = cy + Lay.ENV_Y;
         var stale = (mWxAgeMin != null) && ((mWxAgeMin as Number) > Lay.STALE_MIN);
-        var iconCol = stale ? Pal.scale(Pal.SKY, 0.5) : Pal.SKY;
+        var iconCol = ChartColors.WEATHER_RAIN;
         var valCol = stale ? Pal.DIM : Pal.INK;
         // Keep stale-data handling even though the WX age footer is removed.
-        // Old weather may dim its icon, but never its small text.
+        // Fixed vivid icons identify each field; old readings retain the softer value color.
         var subCol = Pal.DIMMER;
+        // Keep the risk category aligned with the displayed whole UV index.
+        var uvShown = null;
+        if ((mUv instanceof Number || mUv instanceof Float) && mUv >= 0) {
+            uvShown = Fmt.round(mUv);
+        }
+        var uvCol = ChartColors.uvIndex(uvShown);
+        var uvValueCol = (uvShown != null) ? Pal.lerp(uvCol, Pal.INK, 0.65) : uvCol;
 
         var items = [];
         var cond = (mCond != null) ? condGlyph(mCond as Number) : "?";
         var hiLo = (mHiC != null && mLoC != null) ? tempStr(mHiC) + "/" + tempStr(mLoC) : null;
         items.add([cond, null, (mTempC != null) ? tempStr(mTempC) + "°" : "--", hiLo]);
-        items.add(["D", null, (mHum != null) ? Fmt.round(mHum).format("%d") + "%" : "--", null]);
+        var humidityItem = ["D", null, (mHum != null) ? Fmt.round(mHum).format("%d") + "%" : "--", null];
+        var moistureItem = humidityItem;
+        if (mDewC != null) {
+            var dewItem = ["d", null, tempStr(mDewC) + "°", null];
+            // Reserve the wider form on both phases, keeping adjacent fields
+            // and fit decisions stable while the same weather observation is cached.
+            var slotWidth = itemWidth(dc, humidityItem);
+            var dewWidth = itemWidth(dc, dewItem);
+            if (dewWidth > slotWidth) { slotWidth = dewWidth; }
+            humidityItem.add(slotWidth);
+            dewItem.add(slotWidth);
+            if (mHum == null || mEnvShowDew) {
+                moistureItem = dewItem;
+            }
+        }
+        items.add(moistureItem);
         if (mRainPct != null && (mRainPct as Number) >= Lay.RAIN_MIN) {
             items.add(["u", null, (mRainPct as Number).format("%d") + "%", null]);
         } else {
-            items.add([null, "UV", (mUv != null) ? Fmt.round(mUv).format("%d") : "--", null]);
+            items.add([null, "UV", (uvShown != null) ? uvShown.format("%d") : "--", null]);
         }
 
         // Tighten spacing before dropping the high/low, then the third item.
@@ -1188,21 +1236,50 @@ class SkyRingView extends WatchUi.WatchFace {
         var x = cx - rowWidth(dc, items, gap) / 2;
         for (var j = 0; j < items.size(); j++) {
             var it = items[j] as Array;
+            // Literal receivers make content comparisons safe for null row fields.
+            var isUv = "UV".equals(it[1]);
+            var isMoisture = "D".equals(it[0]) || "d".equals(it[0]);
+            var moistureCol = "d".equals(it[0]) ? Pal.DEW : ChartColors.WEATHER_HUMIDITY;
             var ix = x;
+            if (it.size() > 4) {
+                ix += (itemWidth(dc, it) - itemWidth(dc, it.slice(0, 4))) / 2;
+            }
             if (it[0] != null) {
-                glyph(dc, ix, base - Lay.ICON_MAIN, fI22, it[0] as String, iconCol);
+                var glyphCol = isMoisture ? moistureCol : iconCol;
+                if (j == 0) {
+                    drawConditionIcon(dc, ix, base - Lay.ICON_MAIN, it[0] as String);
+                } else {
+                    glyph(dc, ix, base - Lay.ICON_MAIN, fI22, it[0] as String, glyphCol);
+                }
                 ix += Lay.ICON_ADV;
             }
             if (it[1] != null) {
-                text(dc, ix, base, fL18, aL18, Pal.SKY, it[1] as String);
+                text(dc, ix, base, fL18, aL18, isUv ? uvCol : Pal.SKY, it[1] as String);
                 ix += tw(dc, it[1] as String, fL18) + 4;
             }
-            text(dc, ix, base, fN28, aN28, valCol, it[2] as String);
+            // UV/moisture readings use paler hues; temperature keeps its styling.
+            var readingCol = (isMoisture && !stale) ? Pal.lerp(moistureCol, Pal.INK, 0.65) : valCol;
+            text(dc, ix, base, fN28, aN28, isUv ? uvValueCol : readingCol, it[2] as String);
             if (it[3] != null) {
                 ix += tw(dc, it[2] as String, fN28) + 5;
                 text(dc, ix, base, fL18, aL18, subCol, it[3] as String);
             }
             x += itemWidth(dc, it) + gap;
+        }
+    }
+
+    // The condition icon has its own palette; temperature text is unchanged.
+    // Shared silver cloud overlays keep sun/moon/precipitation accents distinct.
+    // Weather age never desaturates or dims the fixed icon identity colors.
+    private function drawConditionIcon(dc as Graphics.Dc, x as Numeric, y as Numeric,
+            ch as String) as Void {
+        var color = ChartColors.condition(ch);
+        var cloudColor = ChartColors.WEATHER_CLOUD;
+        glyph(dc, x, y, fI22, ch, color);
+        if (ch.equals("p") || ch.equals("q")) {
+            glyph(dc, x, y, fI22, "g", cloudColor);
+        } else if (ch.equals("r") || ch.equals("s") || ch.equals("t")) {
+            glyph(dc, x, y, fI22, "k", cloudColor);
         }
     }
 

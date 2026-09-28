@@ -12,12 +12,12 @@ This guide describes the source in this repository, including its limitations. I
 | Outer ring | Color bands, Sun, Moon | Solar daylight/twilight cycle; each body's current local hour angle; current lunar phase |
 | Left and right edges | Colorful rising/setting Sun icons and times | Local sunrise and sunset clock times |
 | Body row | Heart, stress gauge, stopwatch | Heart rate, stress, and Garmin recovery time |
-| Under body values | Two traces and recovery caption | Four-hour HR and stress trends, and `RECOVERY` or `READY` |
+| Under body values | Two traces and recovery caption | Four-hour HR and stress trends; `READY` at zero recovery hours, otherwise `RECOVERY` |
 | First movement row | Footprints, seven bars, `7d` | Today's steps, seven daily totals, and their rolling sum |
 | Second movement row | Chevrons, flame, stairs | Weekly intensity minutes/goal, daily calories, daily floors climbed |
-| Weather row | Conditions, temperature/high-low, droplet, UV or umbrella | Cached Garmin weather |
+| Weather row | Conditions, temperature/high-low, alternating humidity droplet/dew-point thermometer-and-drop, UV or umbrella | Cached Garmin weather |
 
-The icon identifies a reading; its fixed color identifies a group. Coral is body data, mint is movement, blue is weather, and gold is solar information. Most numerical values are warm off-white. **Icons and numerical values keep their fixed colors.** Saturated data-dependent colors apply to the HR trace, stress trace, and seven daily step bars only; see the [release color table](RELEASE_NOTES.md#color-meaning).
+The icon identifies a reading; its color helps identify its group or condition. Coral is body data, mint is movement, and gold is solar information. Weather-condition icons have their own recognizable colors: yellow Sun, lavender Moon, silver cloud, blue rain, and other condition accents. Dew point's thermometer-and-drop icon is lavender, distinct from humidity's blue droplet. Most numerical values are warm off-white; humidity and dew point use paler matching colors when not known to be stale. Metric icons retain their fixed identity colors. Data-dependent colors apply to the HR trace, stress trace, seven daily step bars, and UV label/number; see the [history color table](RELEASE_NOTES.md#color-meaning) and [weather update](WEATHER_UPDATE.md).
 
 ## Ring and sky information
 
@@ -52,7 +52,7 @@ The ring radius is 220 pixels on the 454-pixel display, with a 12-pixel stroke. 
 
 ### Sun marker, peak elevation, and solar detail line
 
-The Sun is a gold disc with eight rays so it remains distinct from a full Moon. It is rendered at half brightness below the calculated solar horizon. `Astro.compute()` derives its hour angle from longitude, UTC, and the equation of time, using Astronomical Almanac approximations.
+The Sun is a saturated lemon-yellow disc with eight rays so it remains distinct from a full Moon. It is rendered at half brightness below the calculated solar horizon. `Astro.compute()` derives its hour angle from longitude, UTC, and the equation of time, using Astronomical Almanac approximations.
 
 The small degrees value above the date is the approximate maximum elevation at solar noon: `90° − abs(latitude − solarDeclination)`. The angle beside solar time is the Sun's current geometric center elevation. These are different quantities. A small negative current elevation can coexist with the Sun being classified as up, because the rise/set criterion includes the conventional apparent upper-limb allowance.
 
@@ -119,22 +119,9 @@ History samples retain their actual observation timestamp. The complication path
 
 ### Recovery time
 
-The stopwatch is Garmin's native `COMPLICATION_TYPE_RECOVERY_TIME`, read as minutes through `Complications.getComplication()`. It is reread on wake, each normal minute refresh, and when a subscribed complication change is handled while awake. A complication failure clears the cached reading instead of preserving an old result indefinitely.
+The stopwatch shows `ActivityMonitor.getInfo().timeToRecovery` in native whole hours, read on wake and normal minute refresh. This replaces recovery complications entirely. Valid `7` displays `7h`, valid `1` displays `1h`, and valid `0` displays `0h`. Missing, negative, malformed, or unavailable data displays `--`. The caption is `READY` when Garmin reports zero whole hours, and `RECOVERY` for positive or unavailable values. `0h` remains visible; READY uses the same hourly source and adds no minute estimate. No minute conversion, artificial countdown, fallback, deliberate blanking delay, or recovery wake retry runs.
 
-Recovery uses a bounded wake confirmation: a native zero displays immediately, while a first positive reading displays `--` until a later awake frame, approximately one second later. Recovery-only rechecks occur around +1 and +3 seconds on normal awake updates, unless a normal minute/callback read already satisfies them. Late frames do not trigger catch-up loops. There are no timers, extra wake requests, or persistent recovery state. A genuine 1-minute reading remains `1m` after confirmation. This reduces exposure to a transient initial reading; it cannot identify a stale value Garmin continues to return because the complication has no freshness timestamp.
-
-`RecoveryTime.display()` intentionally handles the final hour differently:
-
-| Native recovery value | Display |
-| --- | --- |
-| Missing or invalid | `--`, caption `RECOVERY` |
-| 0 minutes | `0h`, caption `READY` |
-| 1–59 minutes | Exact whole minutes, such as `24m` |
-| 60 minutes or more | Hours rounded upward, such as 61 minutes → `2h` |
-
-This avoids turning one minute into `1h`, which previously made an almost-finished recovery period misleading. `READY` means Garmin reports zero recovery time; the watch face does not calculate a separate readiness assessment or count down from a private timer. Garmin can still return data later than its built-in screen changes.
-
-Recovery occupies a slot used for an unsuccessful external-HRV experiment. **HRV is not implemented in this build.** No API key, external service, or estimated substitute is present.
+The direct API may use different rounding/update timing from Garmin's built-in recovery screen. The source is displayed as returned. See [the September 28 update](RAW_HOURS_UPDATE.md) for the change and [historical research](RECOVERY_INVESTIGATION.md) for the earlier complication issues. HRV remains absent.
 
 ## Movement readings
 
@@ -168,13 +155,17 @@ The intensity/calorie/floor row tightens spacing if needed, then reduces its num
 
 ## Weather
 
-### Source, temperature, high/low, and humidity
+### Source, temperature, high/low, humidity, and dew point
 
 `Weather.getCurrentConditions()` supplies Garmin's **most recently cached observation**. A watch-face refresh rereads that cache; it does not force a fresh weather download. The face makes no external network request and has no weather-provider API key.
 
-Current temperature uses `temperature`, converting the native Celsius value to the watch's temperature-unit preference and rounding to a whole degree. The display uses a degree sign without a repeated `F`/`C` suffix. The small `high/low` pair comes from `highTemperature` and `lowTemperature`, which Garmin defines as the forecast high and low for that day. It is not today's measured range from the watch's temperature sensor. The droplet value is `relativeHumidity`, rounded and shown as a percentage.
+Current temperature uses `temperature`, converting the native Celsius value to the watch's temperature-unit preference and rounding to a whole degree. The display uses a degree sign without a repeated `F`/`C` suffix. The small `high/low` pair comes from `highTemperature` and `lowTemperature`, which Garmin defines as the forecast high and low for that day. It is not today's measured range from the watch's temperature sensor.
 
-Unavailable readings display `--`. High/low is omitted unless both values exist. If the row is too wide, it first tightens gaps, then removes high/low, then removes the third UV/rain item. Temperature/conditions and humidity have priority. The enlarged type and lower row position leave less lateral room, so optional high/low may be omitted more often.
+The moisture slot starts with the large blue droplet and `relativeHumidity`, rounded as a percentage. While receiving normal awake frames it alternates every two seconds with a lavender thermometer-and-drop icon and Garmin's native `dewPoint`, converted from Celsius to the watch's temperature units. There is no literal `DP` label. Humidity uses fixed vivid blue `#329BFF`; dew point uses fixed lavender `#B275FF`. When the observation is not known to be stale, their values use the corresponding icon color blended 65% toward warm off-white. These are identity colors, not risk thresholds.
+
+The wider form determines a shared slot width, keeping the rest of the row stationary. Missing dew point leaves humidity visible; missing humidity leaves a valid dew point visible. If both are missing, the humidity placeholder remains. Zero and negative dew points are valid. No dew-point approximation is calculated. This uses existing awake updates, with no timer or extra weather request; see [weather update logic](WEATHER_UPDATE.md#humidity--dew-point-slot).
+
+Unavailable readings display `--`. High/low is omitted unless both values exist. If the row is too wide, it first tightens gaps, then removes high/low, then removes the third UV/rain item. Temperature/conditions and the moisture slot have priority. The enlarged type and lower row position leave less lateral room, so optional high/low may be omitted more often.
 
 ### Conditions icon
 
@@ -194,9 +185,24 @@ The icon beside temperature follows Garmin's `condition` value, not just day/nig
 
 Several distinct Garmin conditions share an icon; a snowflake is not a detailed precipitation-type report. Day/night only changes the clear and partly cloudy families, using calculated solar horizon status. If the icon disagrees with the sky, check Garmin's own weather observation and location before assuming a rendering fault; this face no longer displays observation age.
 
+The colors help distinguish those families without changing their selection logic:
+
+| Condition element | Display color |
+| --- | --- |
+| Sun or lightning accent | Yellow `#FFF000` |
+| Moon accent | Lavender `#BD80FF` |
+| Cloud | Silver `#DCEBFF` |
+| Fog/haze | Silver-teal `#33E1C6` |
+| Rain | Blue `#258CFF` |
+| Snow | Icy cyan `#26E6FF` |
+| Wind | Mint `#34F0A0` |
+| Unknown | Neutral off-white |
+
+Partly cloudy Sun/Moon and rain/snow/thunderstorm symbols have a silver cloud layer over their colored accent. The temperature number is unchanged. This is icon styling using the same cached condition, not additional forecast or cloud-cover data.
+
 ### UV versus rain chance
 
-The rightmost weather field shows precipitation chance with an umbrella when `precipitationChance >= 30%`. Otherwise it shows rounded `uvIndex` with a `UV` label. If UV is unavailable, that branch shows `UV --`.
+The rightmost weather field shows precipitation chance with an umbrella when `precipitationChance >= 30%`. Otherwise it shows rounded `uvIndex` with a `UV` label. The label uses saturated green for 0–2, yellow for 3–5, orange for 6–7, red for 8–10, and purple for 11+. The number uses a paler shade of the same color, blended 65% toward warm off-white. These are the [EPA/NWS UV risk categories](https://www.epa.gov/sites/default/files/documents/uviguide.pdf), using the face's existing saturated palette. Color is selected from the displayed rounded number. Missing, nonnumeric, or negative UV shows neutral off-white `UV --`; measured zero remains green.
 
 **Cloud cover is not the switching rule.** A cloudy observation with 10% precipitation chance still shows UV; a sunny observation with 40% precipitation chance shows rain chance. Neither the hourly nor daily forecast API is currently queried separately. This field comes entirely from `CurrentConditions`, and it may be hidden when the row cannot fit.
 
@@ -204,7 +210,7 @@ The rightmost weather field shows precipitation chance with an umbrella when `pr
 
 The visible `WX` timer has been removed. The source still calculates elapsed minutes since Garmin's `observationTime` internally to detect stale weather. This is observation age, not time since the watch face last refreshed. A future timestamp is clamped to age zero; a missing timestamp means age is unknown.
 
-When the known observation age is **more than 120 minutes**, weather icons are dimmed to half their blue intensity and main values switch to the slightly softer off-white. Small weather text remains bright. Cached old readings are not automatically replaced with blanks. Unknown age cannot trigger stale styling; normal colors are not proof of a fresh observation.
+All weather icons keep their full identity colors. When the known observation age is **more than 120 minutes**, temperature, humidity, dew point, and rain values use the slightly softer off-white. Small weather text remains bright. UV text retains its risk-category hue at all ages; that hue describes the cached value, not its freshness. Cached old readings are not automatically replaced with blanks. Unknown age cannot trigger stale styling; normal colors are not proof of a fresh observation.
 
 ## Readability and typography
 
@@ -222,8 +228,7 @@ Text colors remain bright: primary `#F1EBDF`, secondary `#E2DDD4`, and small uni
 | Main clock and live HR attempt | Each awake redraw supplied by Garmin |
 | HR fallback history | At most once per 30 seconds; samples expire after five minutes |
 | Four-hour HR and stress traces | Rebuilt together approximately every five minutes during full refreshes, or after clock rollback |
-| Recovery and stress | Also reread after subscribed complication changes on an awake frame |
-| Recovery wake confirmation | At most two extra native reads near +1s/+3s on normal awake frames; no timers or forced updates |
+| Stress | Also reread after subscribed complication changes on an awake frame |
 | Low-power update | Clear to black and return before data/astronomy work |
 | Display off | Return without drawing or data work |
 | A complication change while asleep | Mark data dirty for the next wake; do not wake the display |
@@ -244,6 +249,6 @@ Relevant official API contracts, checked against the SDK documentation included 
 
 - [ActivityMonitor.Info](https://developer.garmin.com/connect-iq/api-docs/Toybox/ActivityMonitor/Info.html) and [ActiveMinutes](https://developer.garmin.com/connect-iq/api-docs/Toybox/ActivityMonitor/ActiveMinutes.html): daily counters and weighted intensity minutes.
 - [Activity.Info](https://developer.garmin.com/connect-iq/api-docs/Toybox/Activity/Info.html) and [SensorHistory](https://developer.garmin.com/connect-iq/api-docs/Toybox/SensorHistory.html): available current/history readings.
-- [Complications](https://developer.garmin.com/connect-iq/api-docs/Toybox/Complications.html): native subscribed recovery and stress values.
+- [Complications](https://developer.garmin.com/connect-iq/api-docs/Toybox/Complications.html): native subscribed stress values. Recovery uses ActivityMonitor whole hours.
 - [Weather](https://developer.garmin.com/connect-iq/api-docs/Toybox/Weather.html) and [CurrentConditions](https://developer.garmin.com/connect-iq/api-docs/Toybox/Weather/CurrentConditions.html): cached weather, units, condition codes, and observation time.
 - [WatchFace](https://developer.garmin.com/connect-iq/api-docs/Toybox/WatchUi/WatchFace.html) and [System](https://developer.garmin.com/connect-iq/api-docs/Toybox/System.html): lifecycle, display mode, clock, and settings.

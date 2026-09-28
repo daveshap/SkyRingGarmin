@@ -46,3 +46,40 @@ function stepsChangeColorOnlyAtAKnownPositiveGoal(logger) {
     Test.assertEqual(ChartColors.steps(-1, 6000), Pal.TRACK);
     return true;
 }
+
+(:test)
+function weatherColorsCompareGlyphContentsAcrossAllocations(logger) {
+    var glyphs = ["c", "p", "t", "n", "q", "C", "f", "r", "s", "w"];
+    var expected = [ChartColors.WEATHER_SUN, ChartColors.WEATHER_SUN,
+        ChartColors.WEATHER_SUN, ChartColors.WEATHER_MOON,
+        ChartColors.WEATHER_MOON, ChartColors.WEATHER_CLOUD,
+        ChartColors.WEATHER_FOG, ChartColors.WEATHER_RAIN,
+        ChartColors.WEATHER_SNOW, ChartColors.WEATHER_WIND];
+    for (var i = 0; i < glyphs.size(); i++) {
+        Test.assertEqual(ChartColors.condition(glyphs[i]), expected[i]);
+        // Produce a separate string at runtime; == cannot compare its contents.
+        var dynamicGlyph = ("prefix" + glyphs[i]).substring(6, 7) as String;
+        Test.assertEqual(ChartColors.condition(dynamicGlyph), expected[i]);
+    }
+    Test.assertEqual(ChartColors.WEATHER_SUN, 0xFFF000);
+    Test.assertEqual(ChartColors.condition("?"), Pal.DIMMER);
+    Test.assertEqual(ChartColors.condition("future"), Pal.DIMMER);
+    return true;
+}
+
+(:test)
+function ultravioletColorsUseDisplayedRiskCategory(logger) {
+    var levels = [0, 1, 2, 3, 5, 6, 7, 8, 10, 11, 15];
+    var expected = [ChartColors.GREEN, ChartColors.GREEN, ChartColors.GREEN,
+        ChartColors.YELLOW, ChartColors.YELLOW, ChartColors.ORANGE,
+        ChartColors.ORANGE, ChartColors.RED, ChartColors.RED,
+        ChartColors.PURPLE, ChartColors.PURPLE];
+    for (var i = 0; i < levels.size(); i++) {
+        Test.assertEqual(ChartColors.uvIndex(levels[i]), expected[i]);
+    }
+    Test.assertEqual(ChartColors.uvIndex(null), Pal.DIMMER);
+    Test.assertEqual(ChartColors.uvIndex(-1), Pal.DIMMER);
+    Test.assertEqual(ChartColors.uvIndex("2"), Pal.DIMMER);
+    Test.assertEqual(ChartColors.uvIndex(2.5), Pal.DIMMER);
+    return true;
+}

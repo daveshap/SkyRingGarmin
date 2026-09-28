@@ -97,6 +97,11 @@ ICONS20={
  'w':'<path d="M3 9h11a3 3 0 1 0-3-3M3 15h15a3 3 0 1 1-3 3M3 12h7"/>',
  'u':'<path d="M3 12.5a9 9 0 0 1 18 0zM12 12.5v6a2 2 0 0 1-4 0"/>',
  'X':'<path d="M3.5 16a8.5 8.5 0 0 1 17 0"/><path d="M12 16l4.6-5.6"/><circle cx="12" cy="16" r="1.3"/>',
+ # Dew point: thermometer beside a condensation drop. RH keeps the large drop.
+ 'd':'<path d="M5.5 13.5V4.5a2.5 2.5 0 0 1 5 0v9a4.5 4.5 0 1 1-5 0zM8 7v10"/><path d="M18 9.5c2.1 2.8 3.6 4.8 3.6 6.9a3.6 3.6 0 0 1-7.2 0c0-2.1 1.5-4.1 3.6-6.9z"/>',
+ # Silver cloud overlays for existing compound weather glyphs; no extra text.
+ 'g':'<path d="M9.5 20h8a3.5 3.5 0 0 0 .4-7 4.8 4.8 0 0 0-9.1 1.1A3 3 0 0 0 9.5 20z"/>',
+ 'k':'<path d="M7.2 14.5h9.6a4.2 4.2 0 0 0 .5-8.4 5.6 5.6 0 0 0-10.7 1.3 3.6 3.6 0 0 0 .6 7.1z"/>',
 }
 ICONS14={
  # Lunar horizon events: a lavender crescent and a separately coloured arrow.
