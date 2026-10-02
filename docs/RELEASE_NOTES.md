@@ -1,6 +1,17 @@
 # SkyRing release notes
 
-## September 28, 2026 — weather and recovery polish
+## October 2, 2026 — publish the September 30 Moon horizon correction
+
+The owner requested publication of the working version. The Moon marker now follows an east/up/west projection of its apparent altitude and azimuth. Its center stays in the upper semicircle while above the horizon and in the lower semicircle while below. This corrects the reported near-horizon placement when the actual Moon was visibly higher in the sky.
+
+The underlying lunar coordinates and phase, Sun's hour-angle placement, ring colors, colorful sunrise/sunset icons, native fonts, weather/recovery behavior, and wake-only lifecycle are retained. One current lunar position is calculated on wake and once per minute while awake. No moonrise/set search, event prediction row, timer, or new data service is added.
+
+The projection drops north/south depth; it is not a calibrated altitude scale. Its center horizon and the marker's upper-limb brightness criterion differ slightly around rise/set. [Method, reason, and limits](MOON_HORIZON_UPDATE.md).
+
+The September 30 candidate passed generic release/test compilation and source-derived checks, including full-day motion; 30 native test functions compiled. October 2 restoration/publication verification is recorded in [VALIDATION.md](VALIDATION.md). Native Garmin VM execution and battery profiling remain unmeasured. The previous published release and rollback point is [`e784b10c50597fd234c242d24eb8779307d5b6ca`](https://github.com/daveshap/SkyRingGarmin/commit/e784b10c50597fd234c242d24eb8779307d5b6ca).
+
+
+## September 28, 2026 — weather and recovery polish (historical release)
 
 The owner reported that the current build "all seems to work" and requested publication. This release preserves the runtime and resources from that accepted polish build; documentation records the combined September 26–28 changes and their rationale.
 
@@ -17,7 +28,7 @@ Build `monkey.jungle` for `fr965` using the existing developer key and installed
 
 ## Development history — September 26–28
 
-The September 26 weather candidate introduced UV colors, native dew point, and layered condition icons. The September 27 recovery candidate removed deliberate positive-reading blanking and briefly used a minute complication with an hourly fallback and optional diagnostics. The user still observed `1m`, so the September 28 change moved entirely to raw hours. A later weather fix replaced String identity comparisons, and the final polish increased contrast, restored READY at zero, and repaired the rotation's behavior under delayed frames. The combined final build is the release described above. Earlier candidate ZIPs are not the current source.
+The September 26 weather candidate introduced UV colors, native dew point, and layered condition icons. The September 27 recovery candidate removed deliberate positive-reading blanking and briefly used a minute complication with an hourly fallback and optional diagnostics. The user still observed `1m`, so the September 28 change moved entirely to raw hours. A later weather fix replaced String identity comparisons, and the final polish increased contrast, restored READY at zero, and repaired the rotation's behavior under delayed frames. The combined final build was the September 28 release. The October 2 Moon correction builds on that baseline. Earlier candidate ZIPs are not the current source.
 
 The [September 27 investigation](RECOVERY_INVESTIGATION.md) remains a dated record of evidence and the superseded implementation. [Recovery debug notes](RECOVERY_DEBUG.md) identify the retired logging path.
 

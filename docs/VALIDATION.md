@@ -1,8 +1,28 @@
 # Validation — current release and development history
 
-## September 28, 2026 — owner acceptance and publication
+## October 2, 2026 — Moon horizon restoration and publication
 
-The owner reported that the latest polish build appears to work and explicitly requested publication. This is the current known-good version. The application source, resources, tests, build configuration, and tools match the delivered `SkyRing_Polish_2026-09-28.zip`; only README/documentation were edited for publication.
+The owner requested publication of the working version after delivery of the September 30 Moon-horizon candidate. The publication is based on the September 28 repository commit [`e784b10c50597fd234c242d24eb8779307d5b6ca`](https://github.com/daveshap/SkyRingGarmin/commit/e784b10c50597fd234c242d24eb8779307d5b6ca), with the recorded September 30 source/test patch restored. Workspace maintenance had removed the unpublished candidate folder and ZIP. This is a source restoration, not a byte-for-byte claim about that lost ZIP or its checksum.
+
+The earlier September 30 delivery recorded successful generic release and native-test compilation (30 native test functions compiled), existing source-derived regressions, and full-day Moon-motion checks. These are dated development results; compilation does not execute those tests in Garmin's VM. The user's October 2 publication instruction supplies release authorization, but no instrumented device log or measured runtime/battery result was supplied.
+
+The runtime change adds `Astro.moonRingAngle()` and uses `moonRing` for Moon placement. It leaves the lunar ephemeris and phase, solar ring, weather/recovery data paths, and wake/sleep behavior intact. Regression cases cover the September 30 10 a.m. Hillsborough mismatch, both horizon sides, above/below placement, transit and degenerate projection, and the earlier pre-rise observation. [Meaning and limits](MOON_HORIZON_UPDATE.md).
+
+October 2 checks against the restored publication source:
+
+- Generic Connect IQ SDK 9.2.0 release compilation: **BUILD SUCCESSFUL**.
+- Generic native-test compilation: **BUILD SUCCESSFUL**, 30 test functions compiled.
+- `node tools/check_candidate.js`: **PASS** for existing data, recovery, lifecycle, history, and color regressions.
+- `node tools/check_weather.js`: **PASS** for weather String comparison, vivid layered icons, UV contrast, and humidity/dew-point rotation.
+- `node tools/check_rim_positions.js`: **PASS**, including restored Moon regression tests and full-day motion at five locations across two seasonal dates.
+- The missing `fr965` profile warning remains. These are generic compilation and source-derived host execution, not native Garmin VM execution. No battery or callback-time measurement is claimed.
+
+The dated records below describe their own versions. Current display semantics are in [DISPLAY_GUIDE.md](DISPLAY_GUIDE.md) and [LUNAR_CALCULATIONS.md](LUNAR_CALCULATIONS.md).
+
+
+## September 28, 2026 — owner acceptance and publication (historical release)
+
+The owner reported that the latest polish build appears to work and explicitly requested publication. This was the published baseline before the Moon correction. The application source, resources, tests, build configuration, and tools match the delivered `SkyRing_Polish_2026-09-28.zip`; only README/documentation were edited for publication.
 
 Delivered ZIP SHA-256: `8db70a4ff41eed03c30a38aee5b808cd074384dc371988d7286df1305ab6c14f`.
 

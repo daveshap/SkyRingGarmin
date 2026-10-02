@@ -9,7 +9,7 @@ This guide describes the source in this repository, including its limitations. I
 | Top, beneath the ring | Small peak-Sun icon and degrees | Approximate maximum solar elevation at solar noon |
 | Header | Date and large clock | Local day/date and device time |
 | Beneath clock | Sun icon, time, angle, countdown | Apparent solar time; current solar elevation; time to sunrise or sunset |
-| Outer ring | Color bands, Sun, Moon | Solar daylight/twilight cycle; each body's current local hour angle; current lunar phase |
+| Outer ring | Color bands, Sun, Moon | Solar daylight/twilight cycle and hour angle; Moon projected from its current local sky position; current lunar phase |
 | Left and right edges | Colorful rising/setting Sun icons and times | Local sunrise and sunset clock times |
 | Body row | Heart, stress gauge, stopwatch | Heart rate, stress, and Garmin recovery time |
 | Under body values | Two traces and recovery caption | Four-hour HR and stress trends; `READY` at zero recovery hours, otherwise `RECOVERY` |
@@ -23,14 +23,11 @@ The icon identifies a reading; its color helps identify its group or condition. 
 
 ### What position on the rim means
 
-Both markers use **local hour angle**. The top is upper meridian transit, the bottom is lower transit, the left side approaches upper transit, and the right side follows it. The mathematical mapping is:
+The **Sun** uses local hour angle: top is solar noon/upper transit, bottom is lower transit, left approaches noon, and right follows it. Its angle is mapped with `x = centerX + radius × sin(angle)` and `y = centerY − radius × cos(angle)`. The colored ring and sunrise/sunset ticks use that same solar scale.
 
-- `x = centerX + radius × sin(hourAngle)`
-- `y = centerY − radius × cos(hourAngle)`
+The **Moon** uses its apparent altitude and azimuth projected onto the east/up/west plane, then extends that direction to the rim. East is left and west is right. Its center occupies the upper half when its apparent center is above the horizon and the lower half when below; the horizontal diameter is its horizon. North/south depth is omitted, so the angle around the rim is not a numerical altitude scale or compass bearing, and the top need not mean directly overhead. The Moon does not share the Sun's horizon crossings or colored daylight band.
 
-This is a daily sky-cycle dial. It is not a compass bearing, and a marker at the top does not mean the body is directly overhead. A marker in the upper half does not by itself prove that body is above the horizon. Latitude and the body's declination also matter. In particular, the Moon does not share the Sun's horizon crossings or colored daylight band.
-
-Above/below-horizon status is calculated separately and changes marker brightness. Both markers remain visible below the horizon so the face continues to show their progress. There is no current moonrise/set time or next full/new-moon prediction.
+Marker brightness is calculated separately using each body's upper-limb horizon criterion. A small part of the Moon may count as visible just before its center crosses the diameter. Both markers remain visible below the horizon. There is no current moonrise/set time or next full/new-moon prediction. See [the projection details](LUNAR_CALCULATIONS.md).
 
 ### Ring colors and elapsed shading
 
@@ -68,7 +65,7 @@ Times follow the device's 12/24-hour preference and are rounded to the nearest m
 
 ### Moon marker and phase
 
-`Lunar.position()` calculates current lunar coordinates using the Meeus chapter 47 periodic series. Local sidereal time minus right ascension gives hour angle. Altitude includes a spherical parallax correction and conventional refraction. Brightness uses a separate standard upper-limb horizon test.
+`Lunar.position()` calculates current lunar coordinates using the Meeus chapter 47 periodic series. Local sidereal time minus right ascension gives hour angle. Altitude includes a spherical parallax correction and conventional refraction. `Astro.moonRingAngle()` projects that apparent altitude and the current azimuth for placement; hour angle only selects a deterministic side if the projection is degenerate. Brightness uses a separate standard upper-limb horizon test.
 
 The Moon is a phase-shaped disc with a thin outline. The illuminated fraction changes continuously; it is not a fixed waxing-gibbous bitmap. Waxing is lit on the right in the northern hemisphere and on the left in the southern hemisphere, with the reverse for waning. This is a conventional phase orientation, not the exact apparent tilt of the Moon in the sky. Below the horizon its lit portion uses 60% brightness. Its dark portion and outline preserve visibility around new moon.
 

@@ -13,7 +13,7 @@ The icon palette groups body/recovery in coral, movement in mint, and solar info
 | `source/SkyRingApp.mc` | Garmin application entry point and initial watch-face view. No network/background service. |
 | `source/SkyRingView.mc` | Lifecycle callbacks, Garmin data reads, caches, text metrics, drawing, fit rules, icons, and layout constants. |
 | `source/WakeState.mc` | Resolve actual display mode; decide when returning to the face requires fresh data. |
-| `source/Astro.mc` | Current solar geometry, displayed solar times, ring thresholds, and one current lunar-position call. |
+| `source/Astro.mc` | Current solar geometry, displayed solar times, ring thresholds, one current lunar-position call, and its east/up/west rim projection. |
 | `source/Lunar.mc` | Current lunar coordinates, phase, hour angle, altitude, azimuth, and horizon test. No future-event search. |
 | `source/DaySteps.mc` | Date-based seven-day aggregation, de-duplication, missing-day distinction, and per-date goal association. |
 | `source/RecoveryTime.mc` | Validation and formatting of native whole-hour recovery only. |
@@ -59,6 +59,10 @@ Stress complication ID construction, callback registration, and subscription rem
 A cached Garmin weather observation is not a direct live sensor or an app-controlled download. This code has no way to promise when Garmin will obtain a new observation. Refreshing the view only rereads what Garmin currently supplies.
 
 Each chart requests native history newest-first and reads at most 1,024 samples per rebuild. If this cap truncates unusually dense data, older missing buckets remain gaps. The renderer requires at least two populated buckets, joins only adjacent populated buckets, and adds an endpoint dot only for a populated latest bucket. Consequently isolated older points may have no visible mark. Both charts use measured history only; the held current stress number is never inserted into the trace. Battery and elevation reads were removed with the footer. Weather observation age remains an internal stale-style input. Actual runtime cost, the full render cost, and battery impact still need FR965 profiling. Removing the known multi-day lunar search does not establish an unlimited rendering budget.
+
+## Moon placement
+
+`Lunar.position()` continues to return the current hour angle, apparent altitude, azimuth, phase, and upper-limb horizon state. `Astro.moonRingAngle()` projects `west = -cos(altitude) × sin(azimuth)` and `up = sin(altitude)`, then takes `atan2(west, up)`. `drawRing()` uses the resulting `moonRing`; the Sun retains `sunH` and its existing solar color thresholds. This small projection replaces the old direct `moonH` placement without additional lunar-coordinate calls. Apparent-center position and upper-limb brightness have deliberately distinct meanings. Degenerate north/south-horizon projections use a deterministic side based on hour angle. [Details and limits](LUNAR_CALCULATIONS.md).
 
 ## Location and units
 

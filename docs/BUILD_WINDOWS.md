@@ -89,7 +89,7 @@ This checks weather color selection with distinct String objects, layered icons,
 
 ### Native Monkey C unit tests
 
-`monkey-tests.jungle` adds `tests` to the source path. `monkey.jungle` is the normal app build. The 26 test functions cover rolling daily steps and goals, history buckets, chart/weather colors and String equality, wake-state decisions, raw-hour recovery formatting including READY, and lunar position/horizon cases. Development checks compiled these tests; they were not executed in the unavailable local FR965 simulator.
+`monkey-tests.jungle` adds `tests` to the source path. `monkey.jungle` is the normal app build. The 30 test functions cover rolling daily steps and goals, history buckets, chart/weather colors and String equality, wake-state decisions, raw-hour recovery formatting including READY, and lunar position/horizon cases including the September 30 rim-placement regression. Development checks compiled these tests; they were not executed in the unavailable local FR965 simulator.
 
 For the VS Code route, set **Monkey C: Jungle Files** to `monkey-tests.jungle` locally, then run **Monkey C: Run Tests** or use the extension's Test Explorer with the FR965 selected. Restore `monkey.jungle` before building the installable release.
 

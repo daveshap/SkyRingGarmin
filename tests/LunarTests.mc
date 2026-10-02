@@ -29,10 +29,53 @@ function lunarLongitudeIsEastPositive(logger) {
 (:test)
 function lunarBelowHorizonBeforeUSNORise(logger) {
     // 17:57 EDT: ten minutes before the reference 18:07 moonrise.
-    // Upper semicircle is NOT a horizon boundary on an hour-angle dial.
+    // This is the original failure case: raw hour angle incorrectly puts the
+    // Moon above the dial's diameter before it has actually risen.
     var p = Lunar.position(1790287020, 36.075, -79.10);
     Test.assert(p[:horizon] < 0);
     Test.assert(p[:hourAngle] > -90 && p[:hourAngle] < 0);
+    return true;
+}
+
+(:test)
+function lunarSeptember30MorningUsesLocalHorizon(logger) {
+    // Reported bug: 2026-09-30 10:00 EDT in Hillsborough. The Moon is
+    // about 16.57 degrees high, although its hour angle is nearly 90.
+    var p = Lunar.position(1790776800, 36.075, -79.10);
+    Test.assert((p[:altitude] - 16.57).abs() < 0.06);
+    Test.assert(p[:hourAngle] > 85 && p[:hourAngle] < 90);
+    var ring = Astro.moonRingAngle(p[:hourAngle], p[:altitude], p[:azimuth]);
+    Test.assert(ring > 65 && ring < 75);
+    return true;
+}
+
+(:test)
+function lunarRingHasIndependentEastWestHorizon(logger) {
+    Test.assert((Astro.moonRingAngle(-60, 0, 90) + 90).abs() < 0.001);
+    Test.assert((Astro.moonRingAngle(60, 0, 270) - 90).abs() < 0.001);
+    Test.assert(Astro.moonRingAngle(-60, 20, 90) > -90);
+    Test.assert(Astro.moonRingAngle(60, 20, 270) < 90);
+    Test.assert(Astro.moonRingAngle(-60, -20, 90) < -90);
+    Test.assert(Astro.moonRingAngle(60, -20, 270) > 90);
+    return true;
+}
+
+(:test)
+function lunarRingTransitsAndDegenerateProjectionStayDefined(logger) {
+    Test.assert(Astro.moonRingAngle(0, 45, 180).abs() < 0.001);
+    Test.assert(Astro.moonRingAngle(0, 45, 0).abs() < 0.001);
+    Test.assert((Astro.moonRingAngle(180, -45, 0).abs() - 180).abs() < 0.001);
+    Test.assertEqual(Astro.moonRingAngle(-90, 0, 0), -90.0);
+    Test.assertEqual(Astro.moonRingAngle(90, 0, 180), 90.0);
+    return true;
+}
+
+(:test)
+function lunarRingBelowHorizonBeforeRise(logger) {
+    var p = Lunar.position(1790287020, 36.075, -79.10);
+    var ring = Astro.moonRingAngle(p[:hourAngle], p[:altitude], p[:azimuth]);
+    Test.assert(p[:altitude] < 0);
+    Test.assert(ring < -90);
     return true;
 }
 

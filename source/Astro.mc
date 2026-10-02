@@ -42,6 +42,21 @@ module Astro {
         return (Math.atan2(y.toDouble(), x.toDouble()) / RAD).toDouble();
     }
 
+    // Project the local sky onto the east/up/west plane of the dial. This
+    // places the Moon above/below the horizontal diameter with its apparent
+    // altitude, rather than assuming that +/-90 degrees of hour angle is
+    // the local horizon. The north/south component is intentionally omitted.
+    function moonRingAngle(hourAngle as Numeric, altitude as Numeric, azimuth as Numeric) as Float {
+        var west = -cosd(altitude) * sind(azimuth);
+        var up = sind(altitude);
+        // At the north/south horizon the projection has no direction.
+        // Use the rising/setting side without dividing by a near-zero norm.
+        if (west * west + up * up < 0.00000000000000000001d) {
+            return (hourAngle < 0) ? -90.0 : 90.0;
+        }
+        return atan2d(west, up).toFloat();
+    }
+
     // Hour angle (degrees, 0..180) at which the sun sits at altitude h0.
     // 180 = never goes below h0 that day, 0 = never reaches h0.
     function hourAngle(h0 as Numeric, lat as Numeric, dec as Numeric) as Double {
@@ -119,6 +134,7 @@ module Astro {
             :sunUp => up,
             :nextMin => (toNext / 15.0d * 60.0d).toNumber(),
             :moonH => lunar[:hourAngle],
+            :moonRing => moonRingAngle(lunar[:hourAngle], lunar[:altitude], lunar[:azimuth]),
             :moonAlt => lunar[:altitude],
             :moonUp => lunar[:horizon] > 0,
             :moonAz => lunar[:azimuth],

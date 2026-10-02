@@ -23,7 +23,7 @@ function load(name, exports) {
     return eval(s);
 }
 const Lunar = load('Lunar', 'coordinates,position,signed');
-const Astro = load('Astro', 'compute,w180');
+const Astro = load('Astro', 'compute,w180,moonRingAngle');
 const Test = { assert: x => assert.ok(x), assertEqual: (a,b) => assert.strictEqual(a,b) };
 const testSource = fs.readFileSync(path.join(root, 'tests/LunarTests.mc'), 'utf8');
 const testNames = [...testSource.matchAll(/\(:test\)\s*function\s+(\w+)\(/g)].map(m => m[1]);
@@ -35,12 +35,13 @@ const lat = 36.075, lon = -79.10, stamp = unix('2026-09-25T00:00:00Z');
 const p = Lunar.position(stamp, lat, lon);
 const a = Astro.compute(stamp, lat, lon, -14400);
 assert.strictEqual(a.moonH, p.hourAngle);
+assert.strictEqual(a.moonRing, Astro.moonRingAngle(p.hourAngle, p.altitude, p.azimuth));
 assert.strictEqual(a.moonUp, p.horizon > 0);
 assert.strictEqual(a.illum, p.illumination);
 assert.strictEqual(a.waxing, p.waxing);
 for (const tz of [-43200, 0, 19800, 50400]) {
     const shifted = Astro.compute(stamp, lat, lon, tz);
-    for (const k of ['sunH', 'moonH', 'moonAlt', 'moonUp', 'illum', 'waxing']) {
+    for (const k of ['sunH', 'moonH', 'moonRing', 'moonAlt', 'moonUp', 'illum', 'waxing']) {
         assert.strictEqual(shifted[k], a[k], 'Timezone changed physical position: ' + k);
     }
 }
@@ -65,7 +66,7 @@ for (const [at, rising] of [
 }
 const stillBelow = Lunar.position(unix('2026-09-24T21:57:00Z'), lat, lon);
 assert(stillBelow.hourAngle > -90 && stillBelow.hourAngle < 0 && stillBelow.horizon < 0);
-console.log('PASS lunar above/below horizon follows lunar altitude, not the solar horizon or dial half');
+console.log('PASS lunar above/below horizon follows lunar altitude independently of the solar horizon');
 
 const view = fs.readFileSync(path.join(root, 'source/SkyRingView.mc'), 'utf8');
 function method(name) {
@@ -80,14 +81,55 @@ for (const [h, expected] of [[0,[0,-214]], [-90,[-214,0]], [90,[214,0]], [180,[0
     const actual = polar(0,0,214,h);
     assert(Math.hypot(actual[0]-expected[0], actual[1]-expected[1]) < 0.001);
 }
-const marker = polar(227,227,214,a.moonH);
+const marker = polar(227,227,214,a.moonRing);
 assert(marker[0] < 227 && marker[1] < 227);
 const nextMarker = Lunar.position(stamp+3600, lat, lon);
 assert(Lunar.signed(nextMarker.hourAngle-p.hourAngle) > 10);
 assert(Lunar.signed(nextMarker.hourAngle-p.hourAngle) < 16);
-assert(/polar\(cx, cy, Lay\.MARKER_R, a\[:moonH\]/.test(view));
+assert(/polar\(cx, cy, Lay\.MARKER_R, a\[:moonRing\]/.test(view));
 assert(/var moonUp = a\[:moonUp\]/.test(view));
-console.log('PASS source rim mapping: top=upper transit, left=approaching, right=after, bottom=lower transit');
+console.log('PASS source rim mapping uses local Moon sky projection; Sun still uses hour angle');
+
+// Reproduce the user's September 30 report: the ephemeris knew the Moon
+// was above the horizon while the former hour-angle placement was near 3.
+const report = Astro.compute(unix('2026-09-30T14:00:00Z'), lat, lon, -14400);
+assert(Math.abs(report.moonAlt - 16.57) < 0.06);
+const oldReportMarker = polar(227,227,214,report.moonH);
+const reportMarker = polar(227,227,214,report.moonRing);
+assert(reportMarker[0] > 227 && reportMarker[1] < 167,
+    'Reported Moon must be clearly above the western horizon');
+assert(oldReportMarker[1] - reportMarker[1] > 45,
+    'Reported case must visibly differ from the old hour-angle mapping');
+console.log('PASS reported 10 a.m. case: altitude='+report.moonAlt.toFixed(3)+
+    ' deg, old angle='+report.moonH.toFixed(3)+' deg, new angle='+report.moonRing.toFixed(3)+' deg');
+
+// Full-day position sweeps check circle radius, hemisphere, east/west side,
+// and finite output across locations/seasons. One present-time ephemeris
+// calculation is used per sample; none of this sweep runs on the watch.
+for (const day of ['2026-09-30', '2026-12-21']) {
+    for (const [placeLat, placeLon] of [[36.075,-79.10],[-33.87,151.21],[0,0],[65,25],[-65,-70]]) {
+        let previous = null;
+        for (let minute=0; minute<=1440; minute+=5) {
+            const sky = Lunar.position(unix(day+'T00:00:00Z')+minute*60, placeLat, placeLon);
+            const angle = Astro.moonRingAngle(sky.hourAngle,sky.altitude,sky.azimuth);
+            const point = polar(0,0,214,angle);
+            assert(Number.isFinite(angle) && point.every(Number.isFinite));
+            assert(Math.abs(Math.hypot(...point)-214)<0.001);
+            if (Math.abs(sky.altitude)>0.001) {
+                assert.strictEqual(point[1]<0,sky.altitude>0,
+                    'Moon drawn on wrong side of its horizon: '+JSON.stringify({day,placeLat,minute,sky,angle}));
+            }
+            const west = -Math.cos(sky.altitude*Math.PI/180)*Math.sin(sky.azimuth*Math.PI/180);
+            if (Math.abs(west)>0.001) assert.strictEqual(point[0]>0,west>0);
+            if (placeLat===lat && previous!==null) {
+                assert(Math.abs(Lunar.signed(angle-previous))<10,
+                    'Unexpected jump in the home-location five-minute motion');
+            }
+            previous=angle;
+        }
+    }
+}
+console.log('PASS full-day Moon projection sweeps at five locations in two seasons');
 
 // Software sample of source drawMoon calls. Garmin fillEllipse takes center
 // and x/y radii, verified in the bundled SDK Dc reference.

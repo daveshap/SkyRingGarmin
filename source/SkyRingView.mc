@@ -759,8 +759,9 @@ class SkyRingView extends WatchUi.WatchFace {
         glyph(dc, px0, cy + Lay.PEAK_ICON_Y, fI16, "P", Pal.PEAK_ICON);
         text(dc, px0 + Lay.SMALL_ADV, cy + Lay.PEAK_Y, fL18, aL18, Pal.PEAK_TEXT, pStr);
 
-        // Hour-angle positions: upper meridian at the top, not compass bearings.
-        var mp = polar(cx, cy, Lay.MARKER_R, a[:moonH] as Float);
+        // The Moon uses its local sky projection so the horizontal diameter
+        // represents its own horizon, independently of the Sun's hour angle.
+        var mp = polar(cx, cy, Lay.MARKER_R, a[:moonRing] as Float);
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_TRANSPARENT);
         dc.fillCircle(mp[0], mp[1], 12);
         var moonUp = a[:moonUp] as Boolean; // Current upper-limb horizon test; independent of the solar ring.
