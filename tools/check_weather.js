@@ -97,13 +97,21 @@ for (const [ch, color] of Object.entries(colors)) {
 console.log('PASS actual drawConditionIcon layers: yellow sun + silver cloud; lavender moon; vivid precipitation');
 
 let mWxAgeMin = 0, mUv = 8, mCond = 1, mHiC = null, mLoC = null, mTempC = 21;
-let mHum = 62, mDewC = 12, mRainPct = 0, mEnvCycleAt = -1, mEnvShowDew = false, mStatuteTemp = true;
+let mHum = 62, mDewC = 12, mRainPct = 0, mStatuteTemp = true;
+function rotation() {
+    return eval('(()=>{' + translate(block(source('MoistureRotation'), 'class MoistureRotation ')) +
+        ';return {update,showDew,isDue,pause};})()');
+}
+let mMoistureRotation = rotation();
 let mAstro = {sunUp:true};
 const condGlyph = method('condGlyph'), tempStr = method('tempStr');
-const updateWeatherCycle = method('updateWeatherCycle');
 const itemWidth = method('itemWidth'), rowWidth = method('rowWidth'), drawEnv = method('drawEnv');
-function env(now = 100) { calls = []; drawEnv({},227,227,now); return calls.slice(); }
-function resetCycle() { mEnvCycleAt = -1; mEnvShowDew = false; }
+// Explicitly advance the state before rendering, matching the view's boundary.
+function env(now = 100) {
+    mMoistureRotation.update(now * 1000, mHum != null && mDewC != null);
+    calls = []; drawEnv({},227,227); return calls.slice();
+}
+function resetCycle() { mMoistureRotation = rotation(); }
 const glyphCall = (cs,ch) => cs.find(c=>c.kind==='glyph' && c.glyph===ch);
 const textCall = (cs,value) => cs.find(c=>c.kind==='text' && c.value===value);
 for (const age of [0,120,121,300]) {
@@ -164,14 +172,14 @@ for (let t = 100; t <= 220; t++) {
 resetCycle();
 for (const [t,ch] of [[100,'D'],[104,'d'],[112,'D'],[172,'d']]) {
     assert(glyphCall(env(t),ch),'A delayed frame switches once at ' + t);
-    assert.equal(mEnvCycleAt,t);
+    assert(!mMoistureRotation.isDue(t * 1000));
     assert(glyphCall(env(t),ch),'A duplicate frame does not switch at ' + t);
-    assert.equal(mEnvCycleAt,t);
+    assert(!mMoistureRotation.isDue(t * 1000));
 }
 assert(glyphCall(env(173),'d'),'One second after a delayed switch stays visible');
 assert(glyphCall(env(174),'D'));
-assert(glyphCall(env(90),'D'),'Rollback restarts RH');
-assert.equal(mEnvCycleAt,90);
+assert(glyphCall(env(90),'D'),'Monotonic wrap preserves the selected reading and restarts dwell');
+assert(!mMoistureRotation.isDue(90000));
 assert(glyphCall(env(91),'D'));
 assert(glyphCall(env(92),'d'));
 mHum = null; mDewC = null;
@@ -182,7 +190,12 @@ for (let t = 100; t <= 108; t++) {
     assert(!glyphCall(cs,'d'),'No dew icon for missing dew data');
     assert(textCall(cs,'--'),'No invented moisture reading');
 }
-console.log('PASS actual weather cycle: sustained 1Hz, 4/8/60s late frames, duplicates, clock rollback, absent readings');
+// The drawing method cannot advance or reset the presentation clock.
+const phaseBefore = mMoistureRotation.showDew();
+for (let i = 0; i < 5; i++) drawEnv({},227,227);
+assert.equal(mMoistureRotation.showDew(), phaseBefore);
+assert(!/getTimer|Time.now|Rotation\.update/.test(block(view,'function drawEnv(')));
+console.log('PASS pure weather rendering: stable slots, sustained/delayed phase input, monotonic wrap, absent readings');
 const outputIndex = process.argv.indexOf('--layers');
 if (outputIndex >= 0) {
     assert(process.argv[outputIndex + 1], '--layers requires a destination');

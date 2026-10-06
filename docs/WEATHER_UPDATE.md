@@ -1,5 +1,7 @@
 # Weather colors and alternating dew point — September 26–28, 2026
 
+**Historical September record.** Its timer-free rotation and wake-reset descriptions were superseded by the October 6 [weather-rotation refactor](WEATHER_ROTATION_UPDATE.md). The colors, native data sources, and READY presentation remain; current lifecycle and scheduling are described in the new guide.
+
 The September 28 release includes the original UV/dew-point features, corrected vivid weather colors, and the final rotation/contrast polish. The owner reported that the current build "all seems to work" and requested publication. See [RAW_HOURS_UPDATE.md](RAW_HOURS_UPDATE.md) for the raw-hours recovery change and [POLISH_UPDATE.md](POLISH_UPDATE.md) for the final display adjustments.
 
 The weather work started from the watch-validated September 25 build, commit `15f0fdf10e00b5548edf1724d9d54d8fb63fd5ba`. `ChartColors.mc` provides UV category and condition-icon colors; `Fmt.mc` defines the fixed lavender dew-point color; `SkyRingView.mc` colors the readings, draws layered condition icons, and alternates humidity with native dew point. The icon generator and main icon atlas gained a dew-point glyph and two cloud overlays. The atlas grew from 24 to 27 glyphs within the same 256 × 128-pixel image. No additional row, text font, weather request, timer, or always-on renderer was added.

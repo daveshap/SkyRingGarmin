@@ -158,9 +158,9 @@ The intensity/calorie/floor row tightens spacing if needed, then reduces its num
 
 Current temperature uses `temperature`, converting the native Celsius value to the watch's temperature-unit preference and rounding to a whole degree. The display uses a degree sign without a repeated `F`/`C` suffix. The small `high/low` pair comes from `highTemperature` and `lowTemperature`, which Garmin defines as the forecast high and low for that day. It is not today's measured range from the watch's temperature sensor.
 
-The moisture slot starts with the large blue droplet and `relativeHumidity`, rounded as a percentage. While receiving normal awake frames it alternates every two seconds with a lavender thermometer-and-drop icon and Garmin's native `dewPoint`, converted from Celsius to the watch's temperature units. There is no literal `DP` label. Humidity uses fixed vivid blue `#329BFF`; dew point uses fixed lavender `#B275FF`. When the observation is not known to be stale, their values use the corresponding icon color blended 65% toward warm off-white. These are identity colors, not risk thresholds.
+The moisture slot starts with the large blue droplet and `relativeHumidity`, rounded as a percentage. During Garmin's permitted high-power window it alternates every two seconds with a lavender thermometer-and-drop icon and Garmin's native `dewPoint`, converted from Celsius to the watch's temperature units. Once selected, the reading is preserved through sleep and repeated callbacks; each resumed dwell starts from that selection. There is no literal `DP` label. Humidity uses fixed vivid blue `#329BFF`; dew point uses fixed lavender `#B275FF`. When the observation is not known to be stale, their values use the corresponding icon color blended 65% toward warm off-white. These are identity colors, not risk thresholds.
 
-The wider form determines a shared slot width, keeping the rest of the row stationary. Missing dew point leaves humidity visible; missing humidity leaves a valid dew point visible. If both are missing, the humidity placeholder remains. Zero and negative dew points are valid. No dew-point approximation is calculated. This uses existing awake updates, with no timer or extra weather request; see [weather update logic](WEATHER_UPDATE.md#humidity--dew-point-slot).
+The wider form determines a shared slot width, keeping the rest of the row stationary. Missing dew point leaves humidity visible; missing humidity leaves a valid dew point visible. If both are missing, the humidity placeholder remains. Zero and negative dew points are valid. No dew-point approximation is calculated. Normal awake frames and one guarded two-second timer advance the shared rotation state. The timer stops if either value is absent, the face is hidden, or it enters sleep/OFF/LOW_POWER. It never fetches weather or extends Garmin's allowed high-power window. See [the current rotation logic](WEATHER_ROTATION_UPDATE.md).
 
 Unavailable readings display `--`. High/low is omitted unless both values exist. If the row is too wide, it first tightens gaps, then removes high/low, then removes the third UV/rain item. Temperature/conditions and the moisture slot have priority. The enlarged type and lower row position leave less lateral room, so optional high/low may be omitted more often.
 
@@ -222,7 +222,8 @@ Text colors remain bright: primary `#F1EBDF`, secondary `#E2DDD4`, and small uni
 | Data or behavior | Current policy |
 | --- | --- |
 | Most metrics, date, weather, position and phase | On wake, then once per minute while awake |
-| Main clock and live HR attempt | Each awake redraw supplied by Garmin |
+| Main clock and live HR attempt | Each permitted awake redraw |
+| Humidity/dew-point selection | Two-second dwell from monotonic time; normal frames plus one guarded awake timer |
 | HR fallback history | At most once per 30 seconds; samples expire after five minutes |
 | Four-hour HR and stress traces | Rebuilt together approximately every five minutes during full refreshes, or after clock rollback |
 | Stress | Also reread after subscribed complication changes on an awake frame |
@@ -230,7 +231,7 @@ Text colors remain bright: primary `#F1EBDF`, secondary `#E2DDD4`, and small uni
 | Display off | Return without drawing or data work |
 | A complication change while asleep | Mark data dirty for the next wake; do not wake the display |
 
-Garmin owns display mode and redraw scheduling. SkyRing does not keep the screen awake with a timer, does not scroll, and has no always-on renderer. Current Sun/Moon positions are one-minute snapshots, not second-by-second animation. An actual high-power display mode overrides stale lifecycle flags to avoid the earlier stuck-black problem.
+Garmin owns display mode and its high-power window. SkyRing's moisture timer requests a redraw only inside the permitted awake lifecycle; it does not keep the display awake, scroll, or add always-on drawing. Garmin documents high-power updates for roughly ten seconds after wake, so a longer system screen timeout is not a promise of continuous two-second rotation. Current Sun/Moon positions remain one-minute snapshots. Physical high-power display mode still overrides stale lifecycle flags for rendering to avoid the earlier stuck-black problem; timer eligibility conservatively requires `onExitSleep()` permission as well.
 
 The current source deliberately excludes respiration, VO2 max, sleep/HRV status, training load, heat/altitude acclimation, Body Battery, SpO2, and a chest-strap connection indicator. Their absence is a scope/implementation fact, not a claim that every item is impossible in all Garmin apps or firmware versions.
 

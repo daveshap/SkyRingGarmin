@@ -1,6 +1,6 @@
 # Build, test, and install on Windows
 
-**This branch is the dual-clock test candidate.** Extract into a fresh folder and reuse your signing key. The new header still needs simulator/watch testing; see [DUAL_CLOCK_UPDATE.md](DUAL_CLOCK_UPDATE.md).
+**This branch contains the dual-clock layout and October 6 weather-rotation candidate.** Extract into a fresh folder and reuse your signing key. The owner liked the header; the new rotation scheduler needs simulator/watch testing. See [DUAL_CLOCK_UPDATE.md](DUAL_CLOCK_UPDATE.md) and [WEATHER_ROTATION_UPDATE.md](WEATHER_ROTATION_UPDATE.md).
 
 SkyRing targets **Forerunner 965 (`fr965`)** only. Open the repository root containing `manifest.xml` and `monkey.jungle`; do not create a new Monkey C project around these files. The manifest requires Connect IQ API 4.2.0. That is the watch's minimum API level, not a requirement to install an old 4.2 SDK.
 
@@ -88,6 +88,14 @@ node .\tools\check_weather.js
 ```
 
 This checks weather color selection with distinct String objects, layered icons, UV and moisture contrast, native dew-point handling, and rotation through delayed or duplicate awake callbacks. It also verifies that the former String-identity comparison fails the same cases. It is a host-side adapter, not an exact Garmin VM or visual simulator.
+
+For the October 6 rotation scheduler:
+
+```powershell
+node .\tools\check_weather_rotation.js
+```
+
+This exercises the state machine and actual lifecycle/timer methods under a mocked event loop, including absent native frames, repeated callbacks, queued ticks after sleep, missing weather values, and conservative timer eligibility. It reproduces the prior callback reset from a pinned source fixture. It cannot establish physical-watch callback delivery or battery cost.
 
 ### Native Monkey C unit tests
 

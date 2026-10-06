@@ -13,6 +13,7 @@ The icon palette groups body/recovery in coral, movement in mint, and solar info
 | `source/SkyRingApp.mc` | Garmin application entry point and initial watch-face view. No network/background service. |
 | `source/SkyRingView.mc` | Lifecycle callbacks, Garmin data reads, caches, text metrics, drawing, fit rules, icons, and layout constants. |
 | `source/WakeState.mc` | Resolve actual display mode; decide when returning to the face requires fresh data. |
+| `source/MoistureRotation.mc` | Native-data availability and two-second monotonic dwell state; preserve selection across pause/resume; no Garmin data reads or drawing. |
 | `source/Astro.mc` | Current solar geometry, displayed solar times, ring thresholds, one current lunar-position call, and its east/up/west rim projection. |
 | `source/Lunar.mc` | Current lunar coordinates, phase, hour angle, altitude, azimuth, and horizon test. No future-event search. |
 | `source/DaySteps.mc` | Date-based seven-day aggregation, de-duplication, missing-day distinction, and per-date goal association. |
@@ -25,6 +26,7 @@ The icon palette groups body/recovery in coral, movement in mint, and solar info
 | `tools/check_rim_positions.js` | Host arithmetic/geometry regression checks using translated production methods. |
 | `tools/check_candidate.js` | Host-side source-derived history, drawing, cache, recovery, goal, color, and lifecycle checks; not Garmin VM execution. |
 | `tools/check_weather.js` | Host-side weather rendering, String content equality, layered colors, rotation, contrast, and missing-data checks; not Garmin VM execution. |
+| `tools/check_weather_rotation.js` | Prior-reset fixture reproduction; production rotation state and view lifecycle/timer wiring under a mocked event loop; not Garmin VM execution. |
 | `tests/` | Date/steps/goals, history buckets, chart colors, wake-state, recovery, and lunar-position regression tests. |
 
 ## Display lifecycle
@@ -37,7 +39,16 @@ The view extends `WatchUi.WatchFace`. `System.getDisplayMode()` is authoritative
 
 `onShow()` and `onExitSleep()` invalidate the minute and HR-fallback polling caches and request one redraw. A display-mode transition, clock rollback, or gap of more than five seconds between awake frames also invalidates those caches. This catches resumes even when expected callbacks are absent. `onEnterSleep()` requests a clearing update when visible. `onHide()` updates the local visibility state.
 
-Native stress complication callbacks mark data dirty even while sleeping. They request an update only when awake. The next awake callback rereads the data. There is no timer, continuous animation, scroll loop, GPS subscription, or brightness/timeout override. The humidity/dew-point icon-and-value slot switches every two seconds using normal high-power updates; `mEnvCycleAt` records when the current selection began, and `mEnvShowDew` records which reading is selected. After two seconds, the next awake frame flips once. Actual show/wake transitions reset to humidity; delayed frames and data refreshes do not reset the phase. Clock rollback resets the dwell. No modulo phase or catch-up loop is used. Its native dew-point value is read and reset alongside the existing weather cache. No dew-point estimate is calculated. The slot reserves the wider humidity/dew-point form so switching does not shift adjacent readings. Its symbols remain icons, not custom bitmap text.
+Native stress complication callbacks mark data dirty even while sleeping. They request an update only when awake. The next awake callback rereads the data. No continuous animation, scroll loop, GPS subscription, or brightness/timeout override is introduced.
+
+Humidity/dew-point rotation has separate responsibilities. `MoistureRotation` holds the selected reading and its two-second dwell using monotonic milliseconds from `System.getTimer()`. Normal awake frames advance that state; `drawEnv()` only draws the already-selected cached reading. It does not mutate timing state. Pausing preserves the selection; resuming gives it a new dwell without forcing humidity. Repeated callbacks do not restart an active dwell. Delayed callbacks flip once, without a catch-up loop. A backward/wrapped timer reading rebases the dwell instead of causing rapid switches. Civil clock corrections do not control this timer.
+
+`SkyRingView` owns one repeating 2,000-ms timer. Only `onExitSleep()` grants permission to use it, and it runs only while the view is eligible and both native moisture readings are available. `onHide()`, `onEnterSleep()`, OFF, and LOW_POWER stop it. Its callback checks eligibility again so a tick already queued at shutdown cannot request a sleeping redraw. The callback checks the same state and requests an update only when a selection change is due; it performs no weather, sensor, or astronomy reads. Selection changes in `onUpdate()`, whether that frame arrived natively or from a timer request, so the two sources cannot double-toggle. A timer request and a simultaneous native update may still cause a redundant paint. That normal paint can call `currentHr()` as usual, so this is not a promise of zero additional sensor/API calls. Cached-weather refresh policy remains unchanged; no zero-cost or measured battery claim is made.
+
+Rendering and timer permission deliberately use different guards. `onUpdate()` still trusts the physical display mode when available, so stale callback flags cannot force an actually awake FR965 display black. Timer eligibility is more conservative: a physical HIGH_POWER report alone does not grant permission to start a watch-face timer. Garmin documents a brief high-power window (roughly ten seconds) and prohibits timer use during low power. This scheduler does not extend that window. If the platform ends it, rotation pauses until a permitted wake; it cannot guarantee uninterrupted two-second motion for an arbitrarily long display timeout.
+
+Native dew point remains part of the existing weather cache. No estimate is calculated. Missing either moisture reading stops the timer and shows the available value; missing both shows the humidity placeholder. The slot reserves the wider humidity/dew-point form so switching does not shift adjacent readings. Its symbols remain icons, not custom bitmap text. [Refactor and failure analysis](WEATHER_ROTATION_UPDATE.md).
+
 
 Recovery reads `ActivityMonitor.getInfo().timeToRecovery` during the normal full refresh on wake and once per minute while awake. `RecoveryTime.validHours()` accepts nonnegative native integers; `displayHours()` retains those hours without conversion. Invalid/unavailable data clears to `--`; a native zero displays `0h`. The caption is `READY` at zero native hours and `RECOVERY` otherwise. The `0h` reading remains visible; READY is a presentation convention for this coarse native value. There is no recovery complication ID/subscription, minute formatter, wake reread state, diagnostic logger, or private countdown.
 
@@ -48,6 +59,7 @@ Stress complication ID construction, callback registration, and subscription rem
 | Data/work | Schedule in this implementation |
 | --- | --- |
 | Current clock | Read and rendered on each awake update; seconds are not displayed. |
+| Humidity/dew-point selection | At least two seconds per reading; native awake frames plus one permitted 2,000-ms timer; cached values only. |
 | Location, current astronomy, activity, weather, stress, recovery | Minute cache, invalidated on wake/resume. |
 | Stress notification | Reread stress on the next awake dirty update, even within the same minute. |
 | Current HR | Prefer activity's current HR on each awake render. |

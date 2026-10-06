@@ -9,6 +9,7 @@ import Toybox.SensorHistory;
 import Toybox.System;
 import Toybox.Time;
 import Toybox.Time.Gregorian;
+import Toybox.Timer;
 import Toybox.WatchUi;
 import Toybox.Weather;
 
@@ -106,8 +107,12 @@ class SkyRingView extends WatchUi.WatchFace {
     private var mTempC = null;
     private var mHum = null;
     private var mDewC = null;
-    private var mEnvCycleAt as Number = -1; // When the currently selected reading began.
-    private var mEnvShowDew as Boolean = false;
+    private var mMoistureRotation as MoistureRotation = new MoistureRotation();
+    private var mMoistureTimer as Timer.Timer? = null;
+    private var mMoistureTimerRunning as Boolean = false;
+    // Timer permission is granted only by Garmin's onExitSleep callback.
+    // Display mode alone must not start a timer in an execution sleep state.
+    private var mMoistureTimerAllowed as Boolean = false;
     private var mCond = null;
     private var mWxAgeMin = null;
     private var mRainPct = null;
@@ -190,12 +195,14 @@ class SkyRingView extends WatchUi.WatchFace {
 
     function onHide() as Void {
         mVisible = false;
+        pauseWeatherRotation();
         mLastDisplayMode = System.DISPLAY_MODE_OFF;
         mLastFrameAt = -1;
     }
 
     function onEnterSleep() as Void {
         mSleeping = true;
+        pauseWeatherRotation();
         mLastDisplayMode = System.DISPLAY_MODE_LOW_POWER;
         // Clear the last visible frame; there is deliberately no always-on face.
         if (mVisible) {
@@ -205,6 +212,7 @@ class SkyRingView extends WatchUi.WatchFace {
 
     function onExitSleep() as Void {
         mSleeping = false;
+        mMoistureTimerAllowed = true;
         mLastFrameAt = -1;
         mRefreshKey = -1;
         mHrHistoryPollAt = -1;
@@ -237,6 +245,7 @@ class SkyRingView extends WatchUi.WatchFace {
         // Match RowWatch: let Garmin own the physical display. An OFF update
         // does no drawing or data work. HIGH_POWER overrides callback flags.
         if (mode == System.DISPLAY_MODE_OFF) {
+            pauseWeatherRotation();
             mLastDisplayMode = mode;
             return;
         }
@@ -244,6 +253,7 @@ class SkyRingView extends WatchUi.WatchFace {
         dc.clear();
         // There is no always-on renderer: LOW_POWER is completely black.
         if (mode != System.DISPLAY_MODE_HIGH_POWER) {
+            pauseWeatherRotation();
             mLastDisplayMode = mode;
             return;
         }
@@ -255,11 +265,6 @@ class SkyRingView extends WatchUi.WatchFace {
 
         var clock = System.getClockTime();
         var now = Time.now();
-        // Restart the weather slot only at an observed wake/show transition.
-        // A slow frame gap still refreshes data without repeatedly pinning RH.
-        if (mLastFrameAt < 0 || mode != mLastDisplayMode) {
-            mEnvCycleAt = -1;
-        }
         if (WakeState.needsRefresh(mode, mLastDisplayMode, mLastFrameAt, now.value())) {
             mRefreshKey = -1;
             mHrHistoryPollAt = -1;
@@ -280,12 +285,15 @@ class SkyRingView extends WatchUi.WatchFace {
             return;
         }
 
+        mMoistureRotation.update(System.getTimer(), mHum != null && mDewC != null);
+        syncMoistureTimer();
+
         drawRing(dc, cx, cy);
         drawHeader(dc, cx, cy, clock);
         drawVitals(dc, cx, cy);
         drawRowA(dc, cx, cy);
         drawRowB(dc, cx, cy);
-        drawEnv(dc, cx, cy, now.value());
+        drawEnv(dc, cx, cy);
     }
 
     private function refresh(now as Time.Moment, clock as System.ClockTime) as Void {
@@ -1177,23 +1185,56 @@ class SkyRingView extends WatchUi.WatchFace {
         return total;
     }
 
-    // Advance once when the visible reading has had at least two seconds.
-    // Do not derive the phase from elapsed % 4: missed frames could repeatedly
-    // land on the same half-cycle. A late frame flips once, without catch-up work.
-    private function updateWeatherCycle(nowSec as Number) as Void {
-        if (mEnvCycleAt < 0 || nowSec < mEnvCycleAt) {
-            mEnvCycleAt = nowSec;
-            mEnvShowDew = false;
-        } else if (nowSec - mEnvCycleAt >= 2) {
-            mEnvCycleAt = nowSec;
-            mEnvShowDew = !mEnvShowDew;
+    private function stopMoistureTimer() as Void {
+        if (mMoistureTimerRunning && mMoistureTimer != null) {
+            mMoistureTimer.stop();
+        }
+        mMoistureTimerRunning = false;
+    }
+
+    private function pauseWeatherRotation() as Void {
+        mMoistureTimerAllowed = false;
+        stopMoistureTimer();
+        mMoistureRotation.pause();
+    }
+
+    private function syncMoistureTimer() as Void {
+        if (!mMoistureTimerAllowed || !mVisible || mSleeping || !isAwake()
+                || !mMoistureRotation.isRotating()) {
+            stopMoistureTimer();
+            return;
+        }
+        if (!mMoistureTimerRunning) {
+            if (mMoistureTimer == null) {
+                mMoistureTimer = new Timer.Timer();
+            }
+            mMoistureTimer.start(method(:onMoistureTick), 2000, true);
+            mMoistureTimerRunning = true;
         }
     }
 
-    // Temperature | humidity/dew point | UV or rain. Normal awake frames drive
-    // the two-second switch; no timer, extra weather request, or sleeping update.
-    private function drawEnv(dc as Graphics.Dc, cx as Number, cy as Number, nowSec as Number) as Void {
-        updateWeatherCycle(nowSec);
+    function onMoistureTick() as Void {
+        // A queued tick after stop must neither redraw nor read data while asleep.
+        if (!mMoistureTimerRunning || !mMoistureTimerAllowed || !mVisible || mSleeping) {
+            return;
+        }
+        if (!isAwake()) {
+            pauseWeatherRotation();
+            return;
+        }
+        if (!mMoistureRotation.isRotating()) {
+            stopMoistureTimer();
+            return;
+        }
+        // Ordinary one-second frames usually handled this already. Only ask
+        // for a frame when due; the actual paint advances the selection once.
+        if (mMoistureRotation.isDue(System.getTimer())) {
+            WatchUi.requestUpdate();
+        }
+    }
+
+    // Pure rendering of the selected native reading. No clock or data reads.
+    private function drawEnv(dc as Graphics.Dc, cx as Number, cy as Number) as Void {
         var base = cy + Lay.ENV_Y;
         var stale = (mWxAgeMin != null) && ((mWxAgeMin as Number) > Lay.STALE_MIN);
         var iconCol = ChartColors.WEATHER_RAIN;
@@ -1224,7 +1265,7 @@ class SkyRingView extends WatchUi.WatchFace {
             if (dewWidth > slotWidth) { slotWidth = dewWidth; }
             humidityItem.add(slotWidth);
             dewItem.add(slotWidth);
-            if (mHum == null || mEnvShowDew) {
+            if (mHum == null || mMoistureRotation.showDew()) {
                 moistureItem = dewItem;
             }
         }

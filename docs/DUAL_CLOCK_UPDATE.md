@@ -1,5 +1,7 @@
 # Side-by-side clocks — restored October 2 candidate
 
+**October 6 follow-up:** the owner liked this layout. The same candidate branch now includes the [humidity/dew-point rotation refactor](WEATHER_ROTATION_UPDATE.md), which needs watch validation. The no-new-timer statement below describes the header-only restoration; the later rotation change adds a guarded awake timer without changing the header.
+
 Restored October 6, 2026 from published working commit `0c16b2b` and the exact runtime patch recorded in the development conversation. The old temporary ZIP was unavailable; this archive and documentation are newly assembled, not byte-identical recovery of that ZIP. The candidate is now saved on GitHub's `candidate/dual-clock` branch. It still needs watch validation.
 
 ## Reading the header

@@ -1,5 +1,17 @@
 # SkyRing release notes
 
+## October 6, 2026 — humidity/dew-point rotation refactor
+
+The owner approved the dual-clock appearance but reported that moisture readings still stopped alternating. The old implementation mixed selection changes into drawing, reset the selection from lifecycle callbacks, and depended entirely on incoming frames. Source-level reproduction establishes those weaknesses, not the exact sequence on the physical watch. Earlier tests supplied awake frames themselves and did not test independent redraw scheduling.
+
+- Move selection/dwell into `MoistureRotation`, using monotonic `System.getTimer()` milliseconds. Preserve the selected reading across sleep, refreshes, and repeated callbacks; switch once when due, without catch-up loops.
+- Keep `drawEnv()` free of timing mutations. Normal awake frames advance the shared state; a single repeating 2,000-ms timer supplies a redraw when needed inside the permitted lifecycle.
+- Grant timer permission only from `onExitSleep()`. Stop on hide, sleep, OFF, LOW_POWER, or missing either moisture reading; recheck guards for queued callbacks. Timer callbacks request a redraw only when due and make no data reads.
+- Preserve native humidity/dew-point data, distinct vivid icons, paler values, stable slot width, clocks, ring, and the black sleeping display. No additional weather polling or timeout extension is introduced.
+
+Saved with the candidate branch rather than promoting `main`. Garmin's brief high-power window still limits animation. Coincident native/timer callbacks may produce a redundant paint; battery cost and the reported watch sequence have not been measured. [Method and watch checks](WEATHER_ROTATION_UPDATE.md) · [Validation record](VALIDATION.md).
+
+
 ## October 6, 2026 — restore and save the October 2 dual-clock candidate
 
 The temporary October 2 download expired. The exact recorded runtime patch was reapplied to published baseline `0c16b2b`. Only `SkyRingView.mc` changes: clock placement, captions, native font size, shared width fallback, and the reduced solar-detail line. Documentation is reconstructed and dated; the ZIP is not claimed to be byte-identical to the expired archive.

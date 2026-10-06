@@ -1,5 +1,7 @@
 # Weather contrast, rotation, and READY — September 28, 2026
 
+**Historical September record.** Its timer-free rotation and wake-reset descriptions were superseded by the October 6 [weather-rotation refactor](WEATHER_ROTATION_UPDATE.md). The colors, native data sources, and READY presentation remain; current lifecycle and scheduling are described in the new guide.
+
 This update builds on the corrected weather-color package and completes the September 28 release. The owner reported that the current build "all seems to work" and requested publication. It adds three small changes.
 
 ## More contrast

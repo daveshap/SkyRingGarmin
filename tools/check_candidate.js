@@ -277,7 +277,10 @@ assert(updateText.includes('var key = now.value() / 60;'), 'Review changed minut
 const integration=eval(`(()=>{
     var t=600, mode=2, native=7, fullReads=0, recoveryReads=0, mRecoveryHours=null;
     var mLastDisplayMode=0, mLastFrameAt=-1, mRefreshKey=-1, mHrHistoryPollAt=-1;
-    var mComplicationsDirty=false, mAstro={}, mEnvCycleAt=-1, mEnvShowDew=false, redraws=0;
+    var mComplicationsDirty=false, mAstro={}, redraws=0, mHum=62, mDewC=12;
+    var mMoistureRotation=(()=>{${translate(block(source('MoistureRotation'), 'class MoistureRotation '))};return {update,showDew,pause};})();
+    var pauseWeatherRotation=()=>mMoistureRotation.pause(),syncMoistureTimer=()=>{};
+    var System={DISPLAY_MODE_OFF:0,DISPLAY_MODE_LOW_POWER:1,DISPLAY_MODE_HIGH_POWER:2,getClockTime:()=>({}),getTimer:()=>t*1000};
     var Time={now:()=>({value:()=>t})};
     var ActivityMonitor={getInfo:()=>{
         recoveryReads++;
@@ -287,14 +290,12 @@ const integration=eval(`(()=>{
     var WatchUi={requestUpdate:()=>redraws++};
     var displayMode=()=>mode, isAwake=()=>mode===2, readStress=()=>{};
     var drawRing=()=>{}, drawHeader=()=>{}, drawVitals=()=>{}, drawRowA=()=>{}, drawRowB=()=>{};
-    ${methodText('updateWeatherCycle')}
-    var drawEnv=(dc,cx,cy,at)=>updateWeatherCycle(at);
+    var drawEnv=()=>{};
     ${methodText('readRecovery')}
     ${methodText('onComplicationChanged')}
     var refresh=now=>{ fullReads++; readRecovery(); };
     ${updateText.replace('var key = now.value() / 60;', 'var key = Math.trunc(now.value() / 60);')}
     return {
-        weatherCycle:()=>({at:mEnvCycleAt,dew:mEnvShowDew}),
         notify:()=>{onComplicationChanged({});return {recoveryReads,redraws};},
         frame:(at,display,value)=>{
             t=at;mode=display;native=value;
@@ -312,26 +313,19 @@ assert.equal(integration.frame(601,2,0).recoveryReads,1,'Stress refresh must not
 for(let t=602;t<660;t++) assert.equal(integration.frame(t,2,0).recoveryReads,1,
     'No +1/+3 rechecks or second-by-second recovery polling');
 assert.deepEqual(integration.frame(660,2,0),{fullReads:2,recoveryReads:2,value:0,draws:2});
-assert.deepEqual(integration.weatherCycle(),{at:660,dew:false});
 assert.equal(integration.frame(661,1,7).recoveryReads,2);
-assert.deepEqual(integration.weatherCycle(),{at:660,dew:false},'LOW_POWER does not advance weather');
 assert.deepEqual(integration.notify(),{recoveryReads:2,redraws:1},'Asleep callback must not wake or read');
 assert.equal(integration.frame(662,0,7).draws,0);
-assert.deepEqual(integration.weatherCycle(),{at:660,dew:false},'OFF does not advance weather');
 assert.equal(integration.frame(663,2,7).value,7,'Wake must refresh native hours');
-assert.deepEqual(integration.weatherCycle(),{at:663,dew:false},'Observed wake restarts RH');
 assert.equal(integration.notify().recoveryReads,3);
 assert.equal(integration.frame(664,2,0).value,7);
 assert.deepEqual(integration.frame(650,2,0),{fullReads:4,recoveryReads:4,value:0,draws:2},
     'Clock rollback must replace stale recovery immediately');
-assert.deepEqual(integration.weatherCycle(),{at:650,dew:false},'Rollback restarts RH');
 assert.equal(integration.frame(651,2,1).recoveryReads,4);
 assert.deepEqual(integration.frame(657,2,1),{fullReads:5,recoveryReads:5,value:1,draws:2},
     'A resume gap without callbacks still refreshes native hours');
-assert.deepEqual(integration.weatherCycle(),{at:657,dew:true},'Slow awake frame gap switches instead of resetting RH');
 assert.deepEqual(integration.frame(720,2,'throw'),{fullReads:6,recoveryReads:6,value:null,draws:2},
     'Native failure must clear the cached reading');
-assert.deepEqual(integration.weatherCycle(),{at:720,dew:false},'Minute/data refresh preserves the running weather cycle');
 
 // Exercise the real ActivityMonitor reader independently of rendering.
 function recoveryReadHarness() {
@@ -393,13 +387,15 @@ console.log('PASS stress-only complication initialization: independent ID, callb
 
 for(const file of fs.readdirSync(path.join(root,'source')).filter(f=>f.endsWith('.mc'))) {
     const code=fs.readFileSync(path.join(root,'source',file),'utf8').replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g,'');
-    assert(!/Toybox\.Timer|new\s+(?:Timer\.)?Timer\b/.test(code), 'Unexpected timer in '+file);
+    if(file !== 'SkyRingView.mc') {
+        assert(!/Toybox\.Timer|new\s+(?:Timer\.)?Timer\b/.test(code), 'Unexpected timer outside view in '+file);
+    }
 }
 assert(!/requestUpdate\(/.test(methodText('readRecovery')));
 assert(!/requestUpdate\(/.test(methodText('onUpdate')));
 assert(/mBarGoals\s*=\s*summary\[:goals\]/.test(view));
 assert(/var dayGoal = \(h has :stepGoal\) \? h.stepGoal : null;/.test(view));
-console.log('PASS actual awake/update wiring: wake/minute-only recovery, stress callback isolation, OFF/LOW early returns, rollback, no timers');
+console.log('PASS actual awake/update wiring: wake/minute-only recovery, stress callback isolation, OFF/LOW early returns, rollback; weather scheduler verified separately');
 const codeOnly=view.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g,'');
 assert(!/COMPLICATION_TYPE_RECOVERY_TIME|\bmRecId\b|\bmRecoveryMin\b|RecoveryReadState|\bmRecoveryRead\b/.test(codeOnly),
     'Recovery must use raw ActivityMonitor hours only');

@@ -2,7 +2,7 @@
 
 A personal **Forerunner 965** watch face: a sky ring around a compact dashboard of activity, recovery, and weather. Built in Garmin Connect IQ / Monkey C for the 454 × 454 AMOLED display.
 
-**Dual-clock candidate — restored October 6, 2026.** Local time and apparent solar time share the main header, with matching large numerals: warm-white local time on the left, amber solar time on the right. This restores the October 2 candidate from its recorded source patch after the temporary download expired. It is saved on `candidate/dual-clock`; watch validation is pending. The working release remains [0c16b2b](https://github.com/daveshap/SkyRingGarmin/commit/0c16b2bffc4aa3b430892c61db1ad82084a084a6). [Candidate guide and build instructions](docs/DUAL_CLOCK_UPDATE.md).
+**October 6, 2026 candidate — dual clocks and weather rotation.** Local time and apparent solar time share the main header, with matching large numerals: warm-white local time on the left, amber solar time on the right. The owner liked the layout but reported that humidity/dew point still stopped alternating. This revision separates rotation state from drawing and adds a guarded two-second redraw timer during Garmin's permitted awake window. It preserves the selection through sleep and repeated callbacks. The candidate belongs on `candidate/dual-clock`; the working `main` release remains [0c16b2b](https://github.com/daveshap/SkyRingGarmin/commit/0c16b2bffc4aa3b430892c61db1ad82084a084a6). Watch validation of the rotation fix remains pending. [Rotation rationale and checks](docs/WEATHER_ROTATION_UPDATE.md) · [Header and build instructions](docs/DUAL_CLOCK_UPDATE.md).
 
 SkyRing uses native, readable text; large icons beside numbers; fixed colors for recognition; bright small labels; and a black sleeping display. Data comes from Garmin's APIs and local astronomy calculations. There is no external account, API key, companion service, or always-on renderer.
 
@@ -31,9 +31,9 @@ On September 30 at 10 a.m. in Hillsborough, the Moon calculation gave about **16
 
 - **Recovery:** reads `ActivityMonitor.Info.timeToRecovery` directly in whole hours. Zero displays `0h` with **READY**; positive hours retain **RECOVERY**; unavailable data shows `--`. Recovery-minute complications, local countdowns, deliberate blanking, and wake retries are removed.
 - **Weather icons:** lemon-yellow Sun and lightning; lavender Moon; silver clouds; blue rain; cyan snow; teal fog; mint wind. Compound icons have separate colored accents and silver cloud layers. The String comparison bug that bypassed these colors is fixed.
-- **Humidity and dew point:** share a stable-width slot with distinct blue-droplet and violet thermometer/drop icons. Normal awake updates alternate every two seconds. The selected reading persists across data refreshes; delayed frames switch once when due instead of repeatedly restarting humidity.
+- **Humidity and dew point:** share a stable-width slot with distinct blue-droplet and violet thermometer/drop icons. The October 6 refactor preserves the displayed selection through refreshes, sleep, and repeated lifecycle callbacks. Normal frames and one guarded two-second timer advance the same rotation state. Missing either value stops the timer and leaves the available reading visible.
 - **UV and contrast:** saturated UV labels follow standard risk categories, while their numbers are paler. Humidity, dew-point, and UV numbers blend 65% toward warm off-white. Rain probability replaces UV at 30% or higher.
-- **Power behavior:** uses normal awake callbacks and cached native weather. No timer, faster polling, display-timeout override, or always-on drawing was added.
+- **Power behavior:** uses cached native weather and remains wake-only. The October 6 timer can request a redraw only after `onExitSleep()` permits it; hide, sleep, OFF, and LOW_POWER stop it. It does not fetch weather, extend the high-power window, or add an always-on renderer. Battery impact has not been measured.
 
 See [release notes](docs/RELEASE_NOTES.md), [weather details](docs/WEATHER_UPDATE.md), [recovery rationale](docs/RAW_HOURS_UPDATE.md), and [the final polish](docs/POLISH_UPDATE.md) for the implementation and reasoning.
 
@@ -64,6 +64,7 @@ Use the [Windows setup and install guide](docs/BUILD_WINDOWS.md) for detailed st
 
 | Guide | Contents |
 | --- | --- |
+| [Weather rotation refactor](docs/WEATHER_ROTATION_UPDATE.md) | Reported stall, reproduced logic weaknesses, guarded scheduler, and remaining watch checks. |
 | [Dual-clock candidate](docs/DUAL_CLOCK_UPDATE.md) | Side-by-side clock design, restoration, and installation. |
 | [Release notes](docs/RELEASE_NOTES.md) | Changes, reasoning, release history, and rollback reference. |
 | [Display guide](docs/DISPLAY_GUIDE.md) | Every icon, number, chart, color, data source, and missing-data rule. |
@@ -91,4 +92,4 @@ The project targets only `fr965` and declares minimum API 4.2.0. Other devices a
 
 `source/` holds the Monkey C modules; `resources/` contains the launcher and icon atlases; `tests/` contains native regression tests. Text uses Garmin's native fonts; the bitmap resources contain icons only.
 
-`tools/check_candidate.js` checks source-derived helper and lifecycle logic; `tools/check_weather.js` checks weather drawing with distinct string objects, rotation, and the prior color-selection failure; `tools/check_rim_positions.js` checks astronomy arithmetic and the Moon's horizon-aware projection. These host checks run outside Garmin's VM. `tools/gen_icons.py` regenerates icons when needed; normal builds use the committed resources. `monkey.jungle` builds the face; `monkey-tests.jungle` adds native tests.
+`tools/check_candidate.js` checks source-derived helper and lifecycle logic; `tools/check_weather.js` checks weather drawing with distinct string objects, rotation, and the prior color-selection failure; `tools/check_weather_rotation.js` reproduces the prior callback reset and exercises monotonic state plus timer/lifecycle wiring; `tools/check_rim_positions.js` checks astronomy arithmetic and the Moon's horizon-aware projection. These host checks run outside Garmin's VM. `tools/gen_icons.py` regenerates icons when needed; normal builds use the committed resources. `monkey.jungle` builds the face; `monkey-tests.jungle` adds native tests.
