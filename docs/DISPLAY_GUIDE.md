@@ -7,8 +7,8 @@ This guide describes the source in this repository, including its limitations. I
 | Position | Element | Meaning |
 | --- | --- | --- |
 | Top, beneath the ring | Small peak-Sun icon and degrees | Approximate maximum solar elevation at solar noon |
-| Header | Date and large clock | Local day/date and device time |
-| Beneath clock | Sun icon, time, angle, countdown | Apparent solar time; current solar elevation; time to sunrise or sunset |
+| Header | Date and two large clocks | LOCAL device time in warm white; SOLAR apparent solar time in amber |
+| Beneath clocks | Angle and countdown | Current solar elevation; time to sunrise or sunset |
 | Outer ring | Color bands, Sun, Moon | Solar daylight/twilight cycle and hour angle; Moon projected from its current local sky position; current lunar phase |
 | Left and right edges | Colorful rising/setting Sun icons and times | Local sunrise and sunset clock times |
 | Body row | Heart, stress gauge, stopwatch | Heart rate, stress, and Garmin recovery time |
@@ -51,11 +51,11 @@ The ring radius is 220 pixels on the 454-pixel display, with a 12-pixel stroke. 
 
 The Sun is a saturated lemon-yellow disc with eight rays so it remains distinct from a full Moon. It is rendered at half brightness below the calculated solar horizon. `Astro.compute()` derives its hour angle from longitude, UTC, and the equation of time, using Astronomical Almanac approximations.
 
-The small degrees value above the date is the approximate maximum elevation at solar noon: `90° − abs(latitude − solarDeclination)`. The angle beside solar time is the Sun's current geometric center elevation. These are different quantities. A small negative current elevation can coexist with the Sun being classified as up, because the rise/set criterion includes the conventional apparent upper-limb allowance.
+The small degrees value above the date is the approximate maximum elevation at solar noon: `90° − abs(latitude − solarDeclination)`. The angle below the clocks is the Sun's current geometric center elevation. These are different quantities. A small negative current elevation can coexist with the Sun being classified as up, because the rise/set criterion includes the conventional apparent upper-limb allowance.
 
 Solar time is apparent solar time, or sundial time, in `HH:MM` format. It always uses 24-hour notation even when the large clock uses 12-hour time. Apparent solar noon is 12:00; longitude and the equation of time explain why it differs from the civil clock. The code also computes mean solar time internally, but does not display it.
 
-The text to its right gives the time to the next sunrise or sunset, such as `2h 25m to sunset`. It uses the current day's simplified solar solution, not a multi-day event search. At polar limits it instead says `sun up all day` or `sun down all day`. Spacing tightens first if the line is long; its countdown text can then drop from the 24-pixel font to 22 pixels.
+The text beside the current elevation gives the time to the next sunrise or sunset, such as `2h 25m to sunset`. It uses the current day's simplified solar solution, not a multi-day event search. At polar limits it instead says `sun up all day` or `sun down all day`. Spacing tightens first if the line is long; its countdown text can then drop from the 24-pixel font to 22 pixels.
 
 ### Sunrise and sunset
 
@@ -88,7 +88,7 @@ With only the time-zone estimate, the ring becomes neutral, the Sun/Moon markers
 
 ## Date and civil time
 
-The date uses `Gregorian.info()` with medium formatting, displayed as day of week, day number, and month. The large clock uses `System.getClockTime()` and respects `System.getDeviceSettings().is24Hour`. It displays minutes, without a seconds field. Twelve-hour mode has a separate smaller `am` or `pm` suffix.
+The date uses `Gregorian.info()` with medium formatting, displayed as day of week, day number, and month. The large clock uses `System.getClockTime()` and respects `System.getDeviceSettings().is24Hour`. It displays minutes, without a seconds field. Twelve-hour mode puts `am` or `pm` in the LOCAL caption. Solar time always uses 24-hour notation. Both readings share a baseline and native font size: 64 pixels normally, with a shared 48-pixel fallback if either measured string exceeds 152 pixels.
 
 The date is cached with the normal data refresh; time is read each awake redraw. The watch controls its clock and time zone. The face does not set either.
 
@@ -213,7 +213,7 @@ All weather icons keep their full identity colors. When the known observation ag
 
 The entire former footer is removed, including battery and elevation data reads. These fields are not moved into another row. Daily floors climbed stays in the movement row. Reclaimed space allows larger text and icons and more separation between the two history charts, movement rows, and weather. Weather is now the last row; there is no lunar-event line beneath it.
 
-All ordinary text uses Garmin's native `RobotoCondensedRegular`, with `RobotoRegular` fallback. If vector fonts are unavailable, built-in Garmin fonts are used. Requested native sizes are 92 pixels for the clock; 48/42/36 for larger values; and 26/24/22 for other values and labels. Font ascent is measured at layout time. Icon artwork alone uses the bundled bitmap glyph atlases, at 28 and 22 pixels; there is no custom bitmap text font.
+All ordinary text uses Garmin's native `RobotoCondensedRegular`, with `RobotoRegular` fallback. If vector fonts are unavailable, built-in Garmin fonts are used. Requested native sizes are 64 pixels for the clock; 48/42/36 for larger values; and 26/24/22 for other values and labels. Font ascent is measured at layout time. Icon artwork alone uses the bundled bitmap glyph atlases, at 28 and 22 pixels; there is no custom bitmap text font.
 
 Text colors remain bright: primary `#F1EBDF`, secondary `#E2DDD4`, and small units/labels `#DCD8D0`. Ring shading and below-horizon markers can be dim; the small labels and valid historical step bars are bright. The application does not change hardware brightness or screen timeout.
 

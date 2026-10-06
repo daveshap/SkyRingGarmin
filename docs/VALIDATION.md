@@ -1,5 +1,11 @@
 # Validation — current release and development history
 
+## October 6, 2026 — restored dual-clock candidate
+
+Runtime source reconstructed from the complete October 2 `SkyRingView.mc` diff, applied to published baseline `0c16b2b`. All other runtime files, resources, manifest, and build configuration are retained. Documentation and preview are regenerated; this is not a byte-for-byte claim about the expired ZIP. Saved to a candidate branch for watch testing, with the working `main` release preserved.
+
+Historical October 2 checks: generic SDK 9.2.0 release compilation passed; existing data/weather host checks passed; nine header cases passed overlap/circular-content checks with desktop Roboto Condensed Regular as a font surrogate. These checks were not Garmin VM or physical-watch validation. Fresh restoration checks: all three `tools/check_candidate.js`, `tools/check_weather.js`, and `tools/check_rim_positions.js` passed. Independent comparison confirms the recorded header patch is the only runtime change and all other runtime/resources/build files match the baseline. Garmin VM and physical-watch validation remain pending.
+
 ## October 2, 2026 — Moon horizon restoration and publication
 
 The owner requested publication of the working version after delivery of the September 30 Moon-horizon candidate. The publication is based on the September 28 repository commit [`e784b10c50597fd234c242d24eb8779307d5b6ca`](https://github.com/daveshap/SkyRingGarmin/commit/e784b10c50597fd234c242d24eb8779307d5b6ca), with the recorded September 30 source/test patch restored. Workspace maintenance had removed the unpublished candidate folder and ZIP. This is a source restoration, not a byte-for-byte claim about that lost ZIP or its checksum.

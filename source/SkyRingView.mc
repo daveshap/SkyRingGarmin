@@ -25,7 +25,10 @@ module Lay {
     const PEAK_ICON_Y = -201;
     const PEAK_Y = -181;
     const DATE_Y = -157;
-    const TIME_Y = -78;
+    const TIME_LABEL_Y = -131;
+    const TIME_Y = -73;
+    const TIME_DX = 84;
+    const TIME_CELL_W = 152;
     const SOLAR_Y = -46;
     const VIT_Y = 8;
     const VIT_DX = 100;
@@ -157,7 +160,7 @@ class SkyRingView extends WatchUi.WatchFace {
     }
 
     function onLayout(dc as Graphics.Dc) as Void {
-        fTime = nativeFont(92);
+        fTime = nativeFont(64);
         fN42 = nativeFont(48);
         fN34 = nativeFont(42);
         fN28 = nativeFont(36);
@@ -835,21 +838,38 @@ class SkyRingView extends WatchUi.WatchFace {
         var wd = tw(dc, mDateStr, fT22);
         text(dc, cx - wd / 2, cy + Lay.DATE_Y, fT22, aT22, Pal.DIM, mDateStr);
 
-        // Time
+        // Two clocks share a baseline and font: civil time left, solar time right.
+        // Put am/pm in the local caption so both readings have the same space.
         var tp = timeParts(clock);
-        var wT = tw(dc, tp[0], fTime);
-        var wS = (tp[1].length() > 0) ? tw(dc, tp[1], fT22) + 5 : 0;
-        var x = cx - (wT + wS) / 2;
-        text(dc, x, cy + Lay.TIME_Y, fTime, aTime, Pal.INK, tp[0]);
-        if (wS > 0) {
-            text(dc, x + wT + 5, cy + Lay.TIME_Y, fT22, aT22, Pal.DIM, tp[1]);
-        }
-
-        // Solar time | sun elevation now | time to the next sunrise or sunset
         var solarMin = a[:trueMin] as Number;
         var solarStr = (mLocApprox ? "~" : "") + Fmt.clock(solarMin, true);
+        var localX = cx - Lay.TIME_DX;
+        var solarX = cx + Lay.TIME_DX;
+        var labelY = cy + Lay.TIME_LABEL_Y;
+        var localLabel = "LOCAL" + ((tp[1].length() > 0) ? " " + tp[1] : "");
+        text(dc, localX - tw(dc, localLabel, fL18) / 2, labelY,
+            fL18, aL18, Pal.DIM, localLabel);
+        var solarLabelW = Lay.SMALL_ADV + tw(dc, "SOLAR", fL18);
+        var labelX = solarX - solarLabelW / 2;
+        glyph(dc, labelX, labelY - Lay.ICON_SMALL + 3, fI16, "U", Pal.SUN);
+        text(dc, labelX + Lay.SMALL_ADV, labelY, fL18, aL18, Pal.GOLD, "SOLAR");
+
+        var clockFont = fTime;
+        var clockAsc = aTime;
+        // Fit both together, including the location-estimate prefix and native
+        // font fallback metrics. Font resources are loaded only in onLayout.
+        if (tw(dc, tp[0], clockFont) > Lay.TIME_CELL_W || tw(dc, solarStr, clockFont) > Lay.TIME_CELL_W) {
+            clockFont = fN42;
+            clockAsc = aN42;
+        }
+        text(dc, localX - tw(dc, tp[0], clockFont) / 2, cy + Lay.TIME_Y,
+            clockFont, clockAsc, Pal.INK, tp[0]);
+        text(dc, solarX - tw(dc, solarStr, clockFont) / 2, cy + Lay.TIME_Y,
+            clockFont, clockAsc, Pal.GOLD, solarStr);
+
+        // Current sun elevation and the next sunrise/sunset stay below the clocks.
         if (mLocApprox) {
-            var estimate = solarStr + "  location needed";
+            var estimate = "location needed";
             text(dc, cx - tw(dc, estimate, fT22) / 2, cy + Lay.SOLAR_Y,
                 fT22, aT22, Pal.DIM, estimate);
             return;
@@ -866,7 +886,6 @@ class SkyRingView extends WatchUi.WatchFace {
         } else {
             dl = Fmt.duration(a[:nextMin] as Number) + " to sunrise";
         }
-        var ws = tw(dc, solarStr, fT22);
         var wa = tw(dc, altStr, fL20);
         var detailFont = fL20;
         var detailAsc = aL20;
@@ -875,21 +894,18 @@ class SkyRingView extends WatchUi.WatchFace {
         // Tighten spacing before using the smaller countdown font.
         var edgeY = (Lay.SOLAR_Y - aT22).abs().toFloat();
         var available = (2.0 * Math.sqrt(Lay.CONTENT_R * Lay.CONTENT_R - edgeY * edgeY)).toNumber() - 16;
-        var gap = 10;
-        var fixedWidth = Lay.SMALL_ADV + ws + Lay.SMALL_ADV + wa + wdl;
-        if (fixedWidth + 2 * gap > available) {
+        var gap = 14;
+        var fixedWidth = Lay.SMALL_ADV + wa + wdl;
+        if (fixedWidth + gap > available) {
             gap = 4;
         }
-        if (fixedWidth + 2 * gap > available) {
+        if (fixedWidth + gap > available) {
             detailFont = fL18;
             detailAsc = aL18;
             wdl = tw(dc, dl, detailFont);
         }
-        var sx = cx - (Lay.SMALL_ADV + ws + gap + Lay.SMALL_ADV + wa + gap + wdl) / 2;
+        var sx = cx - (Lay.SMALL_ADV + wa + gap + wdl) / 2;
         var base = cy + Lay.SOLAR_Y;
-        glyph(dc, sx, base - Lay.ICON_SMALL, fI16, "U", Pal.SUN);
-        text(dc, sx + Lay.SMALL_ADV, base, fT22, aT22, Pal.GOLD, solarStr);
-        sx += Lay.SMALL_ADV + ws + gap;
         glyph(dc, sx, base - Lay.ICON_SMALL, fI16, "L", Pal.ALT_ICON);
         text(dc, sx + Lay.SMALL_ADV, base, fL20, aL20, Pal.ALT_TEXT, altStr);
         sx += Lay.SMALL_ADV + wa + gap;

@@ -1,8 +1,10 @@
 # Build, test, and install on Windows
 
+**This branch is the dual-clock test candidate.** Extract into a fresh folder and reuse your signing key. The new header still needs simulator/watch testing; see [DUAL_CLOCK_UPDATE.md](DUAL_CLOCK_UPDATE.md).
+
 SkyRing targets **Forerunner 965 (`fr965`)** only. Open the repository root containing `manifest.xml` and `monkey.jungle`; do not create a new Monkey C project around these files. The manifest requires Connect IQ API 4.2.0. That is the watch's minimum API level, not a requirement to install an old 4.2 SDK.
 
-The current source has been checked with Connect IQ SDK **9.2.0**. Generic compilation and host-side calculation checks were available during development; the FR965 profile and its simulator were not available in that environment. The owner subsequently built and installed this revision on a physical FR965 and confirmed it works, including stress history. A successful generic compile alone does not establish device compatibility, runtime memory use, or watchdog timing. Use the device-specific steps below for your own build.
+The current source has been checked with Connect IQ SDK **9.2.0**. Generic compilation and host-side calculation checks were available during development; the FR965 profile and its simulator were not available in that environment. The owner previously confirmed the dashboard and stress history on a physical FR965; that report does not validate the new dual-clock header. A successful generic compile alone does not establish device compatibility, runtime memory use, or watchdog timing. Use the device-specific steps below for your own build.
 
 ## 1. Install the tools
 

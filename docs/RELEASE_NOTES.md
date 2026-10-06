@@ -1,5 +1,11 @@
 # SkyRing release notes
 
+## October 6, 2026 — restore and save the October 2 dual-clock candidate
+
+The temporary October 2 download expired. The exact recorded runtime patch was reapplied to published baseline `0c16b2b`. Only `SkyRingView.mc` changes: clock placement, captions, native font size, shared width fallback, and the reduced solar-detail line. Documentation is reconstructed and dated; the ZIP is not claimed to be byte-identical to the expired archive.
+
+LOCAL is left in warm white and follows the device 12/24-hour preference; am/pm is in the caption. SOLAR is right in amber with a yellow Sun icon and retains 24-hour apparent solar time. Both use matching 64-pixel native fonts, with a shared 48-pixel fallback for wide strings. Peak elevation/date stay above, current angle/countdown below. Astronomy and wake-only behavior are preserved. Saved on `candidate/dual-clock` at the owner's request; `main` stays at the working release pending watch testing. [Candidate guide](DUAL_CLOCK_UPDATE.md).
+
 ## October 2, 2026 — publish the September 30 Moon horizon correction
 
 The owner requested publication of the working version. The Moon marker now follows an east/up/west projection of its apparent altitude and azimuth. Its center stays in the upper semicircle while above the horizon and in the lower semicircle while below. This corrects the reported near-horizon placement when the actual Moon was visibly higher in the sky.

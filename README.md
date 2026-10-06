@@ -2,7 +2,7 @@
 
 A personal **Forerunner 965** watch face: a sky ring around a compact dashboard of activity, recovery, and weather. Built in Garmin Connect IQ / Monkey C for the 454 × 454 AMOLED display.
 
-**Current release: October 2, 2026.** Publishes the September 30 Moon-horizon correction after the owner requested publication of the working build. The Moon marker now uses its local sky position, so its position above or below the horizontal diameter follows its apparent altitude. The September 28 weather/recovery release remains available at [e784b10](https://github.com/daveshap/SkyRingGarmin/commit/e784b10c50597fd234c242d24eb8779307d5b6ca).
+**Dual-clock candidate — restored October 6, 2026.** Local time and apparent solar time share the main header, with matching large numerals: warm-white local time on the left, amber solar time on the right. This restores the October 2 candidate from its recorded source patch after the temporary download expired. It is saved on `candidate/dual-clock`; watch validation is pending. The working release remains [0c16b2b](https://github.com/daveshap/SkyRingGarmin/commit/0c16b2bffc4aa3b430892c61db1ad82084a084a6). [Candidate guide and build instructions](docs/DUAL_CLOCK_UPDATE.md).
 
 SkyRing uses native, readable text; large icons beside numbers; fixed colors for recognition; bright small labels; and a black sleeping display. Data comes from Garmin's APIs and local astronomy calculations. There is no external account, API key, companion service, or always-on renderer.
 
@@ -64,6 +64,7 @@ Use the [Windows setup and install guide](docs/BUILD_WINDOWS.md) for detailed st
 
 | Guide | Contents |
 | --- | --- |
+| [Dual-clock candidate](docs/DUAL_CLOCK_UPDATE.md) | Side-by-side clock design, restoration, and installation. |
 | [Release notes](docs/RELEASE_NOTES.md) | Changes, reasoning, release history, and rollback reference. |
 | [Display guide](docs/DISPLAY_GUIDE.md) | Every icon, number, chart, color, data source, and missing-data rule. |
 | [Weather update](docs/WEATHER_UPDATE.md) | Conditions, UV categories, dew point, String comparison fix, and rotation. |
