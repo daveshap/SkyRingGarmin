@@ -7,10 +7,10 @@ A personal **Forerunner 965** watch face: a sky ring around a compact dashboard 
 SkyRing uses native, readable text; large icons beside numbers; fixed colors for recognition; bright small labels; and a black sleeping display. Data comes from Garmin's APIs and local astronomy calculations. There is no external account, API key, companion service, or always-on renderer.
 
 <p align="center">
-  <img src="SkyRing%20Final.png" alt="SkyRing watch face for the Garmin Forerunner 965" width="454">
+  <img src="docs/images/dual-clock-preview.png" alt="Dual-clock candidate with local and solar time side by side" width="454">
 </p>
 
-This image shows an earlier layout. The current build has colored HR/stress histories, larger readings, alternating humidity/dew point, and vivid weather icons. The bottom battery/weather-age/elevation row has been removed.
+Recreated illustrative preview from the candidate drawing methods and icon atlases. Desktop Roboto Condensed Regular substitutes for Garmin's native font; health/weather numbers are sample data. Astronomy uses October 2 at 2:25 p.m. EDT in Hillsborough, NC. This is not a Garmin simulator screenshot or the exact expired PNG.
 
 ## What is on the face
 
